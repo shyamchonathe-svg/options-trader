@@ -145,3 +145,11 @@ Dead-man's switch
  - Crash recovery: small always-on helper service (separate from the trading process) so /restart works even if the main process is dead.
  - Live safety: /arm live and /mode live need confirm code AND a user-chosen PIN (stored hashed on the VM, never shown); 3 wrong PINs lock live commands until next day; live auto-disarms at 15:45 daily.
  - Build starts 16 Nov (P0). Daily chart/checklist routine continues in parallel.
+
+## 13. Kite facts taken from the old repo's working code (verified in its saved dumps, 16 Nov)
+ - kite.instruments("BFO") columns: instrument_token, exchange_token, tradingsymbol, name, last_price, expiry, strike, tick_size, lot_size, instrument_type(CE/PE/FUT), segment('BFO-OPT'), exchange.
+ - Sensex weekly option symbol example: SENSEX2591180300CE = SENSEX + YY(25) + M(9) + DD(11) + strike(80300) + CE. Month is 1 digit for Jan-Sep and a letter for Oct/Nov/Dec (O/N/D) - DO NOT build symbols by hand: always look up name/expiry/strike/type in the dump.
+ - Sensex index: exchange BSE, tradingsymbol SENSEX, instrument_token 265 (segment INDICES). Nifty options live in NFO (name NIFTY); Nifty index token to be read from the NSE dump (INDICES), not hardcoded.
+ - Lot size in the Sept-2025 dump was 20 for Sensex; it changes -> always read lot_size from the dump each morning.
+ - Old fetcher used kite.historical_data(token, from, to, interval) with "3minute"; we need "5minute". Old code downloaded the full instrument list per call; we cache it once per morning.
+ - Old repo only did Sensex; Nifty (NFO) is new work here.
