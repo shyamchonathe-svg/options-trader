@@ -6,7 +6,7 @@ Python 3.6+ stdlib only."""
 import sys, os, io, subprocess, tarfile, gzip, base64, hashlib, time, shutil
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CHUNK = 6000   # base64 characters per paste
+CHUNK = int(os.environ.get("BUNDLE_CHUNK", "6000"))   # base64 characters per paste
 
 def sh(*a):
     return subprocess.check_output(a, cwd=ROOT).decode().strip()
