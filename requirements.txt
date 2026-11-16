@@ -1,0 +1,3 @@
+# VM only (Python 3.10). Lab tests need nothing beyond the stdlib.
+kiteconnect
+requests

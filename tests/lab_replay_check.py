@@ -1,7 +1,8 @@
 """Golden test: new rules_v3 must reproduce the saved v3 trades (exit_v3.txt + exit_v3_1113.txt) exactly."""
 import sys, re, importlib
 sys.path.insert(0, '/home/schonat/deep/tools'); sys.path.insert(0, '/home/schonat/deep/live')
-import zoom_run as zr, strategy_v2 as s2, rules_v3 as r3
+import zoom_run as zr, strategy_v2 as s2
+from trader import rules_v3 as r3
 
 FIXES = [None, ("_pending_regime/2026-10-28_", "vix_gt15/trade_days/2026-10-28_"),
          ("_pending_regime/2026-10-29_", "vix_gt15/trade_days/2026-10-29_"),

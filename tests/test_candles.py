@@ -1,6 +1,6 @@
-import sys, unittest, datetime
-sys.path.insert(0, '/home/schonat/deep/live')
-import candles as c
+import sys, os, unittest, datetime
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from trader import candles as c
 
 D = datetime.datetime
 def t(h, m, s=0): return D(2026, 11, 16, h, m, s)

@@ -153,3 +153,27 @@ Dead-man's switch
  - Lot size in the Sept-2025 dump was 20 for Sensex; it changes -> always read lot_size from the dump each morning.
  - Old fetcher used kite.historical_data(token, from, to, interval) with "3minute"; we need "5minute". Old code downloaded the full instrument list per call; we cache it once per morning.
  - Old repo only did Sensex; Nifty (NFO) is new work here.
+
+## 14. Kite API contract (from kite.trade docs, read 16 Nov) - what the code must respect
+ WebSocket (wss://ws.kite.trade, python lib KiteTicker):
+  - <=3000 instruments/connection, <=3 connections/key. We need 14 -> one connection.
+  - Modes: ltp (price only) / quote (no time) / full (adds last_trade_time + exchange_timestamp + depth). Exchange
+    time exists ONLY in 'full' -> subscribe in full. (Implemented: trader/feed.py)
+  - A full packet arrives on any change incl. depth. Bars must be built from TRADES only: accept an option tick only
+    when day volume increases; time-stamp with last_trade_time. Indices: no volume; use exchange_timestamp.
+  - Prices come as paise integers on the wire; the python lib already converts to rupees.
+  - Postbacks/order updates arrive as text frames (type order/error/message) on the same socket (use in P4).
+  - Reconnect: re-subscribe and re-set mode in on_connect; first packet after reconnect only primes volume.
+ Historical (GET /instruments/historical/:token/:interval):
+  - interval '5minute'; candle label = bar START (09:15 = slot 0); record = [timestamp, o, h, l, c, volume].
+  - Timestamps look like 2017-12-15T09:15:00+0530. Rate limit 3 req/s (we need ~14 per morning + back-fills).
+  - Only LIVE contracts' tokens are returned by the instrument API; expired tokens cannot be looked up later ->
+    CACHE the daily dump (filtered to NIFTY/SENSEX options) every morning, dated.
+ Instruments (GET /instruments[/:exchange]):
+  - Gzipped CSV regenerated once a day; fetch ~08:30; last_price in it is NOT live.
+  - Tokens are reused by the exchange after expiry -> store/key by exchange:tradingsymbol, never by token alone.
+ Quotes: /quote (500), /quote/ohlc and /quote/ltp (1000 each), 1 req/s. Keys are 'EXCHANGE:TRADINGSYMBOL'
+  (e.g. BSE:SENSEX, NSE:NIFTY 50). Missing key = no data/expired -> always check key presence.
+ Consequences already applied: feed.py TradeFilter; Tick(symbol=exchange:tradingsymbol); history back-fill repairs gaps.
+ Still to verify ON THE VM (cannot test from the lab): real tick dict keys from KiteTicker in full mode, the NSE index
+ tradingsymbol/token for Nifty, historical_data for a just-expired option token.
