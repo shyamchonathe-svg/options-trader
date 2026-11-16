@@ -51,6 +51,17 @@ class Notifier(object):
                 pass
             return False
 
+    def send_file(self, path, caption=""):
+        try:
+            self.transport.send_document(self.chat_id, path, caption)
+            return True
+        except Exception as e:
+            try:
+                self.store.event("ERROR", "alert-send", "file: %s" % type(e).__name__)
+            except Exception:
+                pass
+            return False
+
     def __call__(self, kind, payload):
         text = format_event(kind, payload)
         if text:

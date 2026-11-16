@@ -23,6 +23,7 @@ def now_s():
 
 class Store(object):
     def __init__(self, path=":memory:"):
+        self.path = path
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         if path != ":memory:":
@@ -49,6 +50,10 @@ class Store(object):
                               (day, symbol, slot, side, status, reasons, entry, stop, target, rules_version, gap, dist))
         self.db.commit()
         return cur.lastrowid, True
+
+    def signal_id(self, day, symbol, slot):
+        r = self.db.execute("SELECT id FROM signals WHERE day=? AND symbol=? AND slot=?", (day, symbol, slot)).fetchone()
+        return r["id"] if r else None
 
     def add_trade(self, signal_id, mode, qty, entry_t, entry_px):
         """Idempotent per signal. Returns (trade_id, created)."""

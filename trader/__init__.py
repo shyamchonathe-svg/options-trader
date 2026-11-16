@@ -1,3 +1,3 @@
 """Weekly-options paper/live trader. Strategy rules are frozen in rules_v3."""
-__version__ = "0.4.0-dev"
+__version__ = "0.5.0-dev"
 RULES_VERSION = "v3.0"

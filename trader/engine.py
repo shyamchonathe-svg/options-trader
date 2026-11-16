@@ -112,6 +112,7 @@ class Engine(object):
         self.notify = notify
         self.rules_version = rules_version
         self.guard = guard
+        self.accepting = True   # False while back-filling history after a late start: no NEW orders, signals recorded as 'missed'
         self._ix = {}      # index name -> _Index
         self._of = {}      # symbol -> _Index
 
@@ -292,6 +293,11 @@ class Engine(object):
         return sid
 
     def _enter(self, ix, i, opt, sig, gap, dist):
+        if not self.accepting:
+            old = self.store.signal_id(self.day, opt.symbol, i)
+            if old is None or self.store.trade_for_signal(old) is None:
+                self._record(ix, i, opt, "missed", "backfill", sig, gap, dist)
+                return
         sid = self._record(ix, i, opt, "traded", "", sig, gap, dist)
         tr = self.store.trade_for_signal(sid)
         if tr is None:

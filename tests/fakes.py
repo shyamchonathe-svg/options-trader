@@ -18,3 +18,21 @@ class FakeTransport(object):
 class FixedRng(object):
     def randrange(self, n):
         return 123456
+
+
+def _send_document(self, chat_id, path, caption=""):
+    if self.fail:
+        raise RuntimeError("net down")
+    self.docs.append((chat_id, path, caption))
+
+
+FakeTransport.send_document = _send_document
+_orig_init = FakeTransport.__init__
+
+
+def _init(self):
+    _orig_init(self)
+    self.docs = []
+
+
+FakeTransport.__init__ = _init
