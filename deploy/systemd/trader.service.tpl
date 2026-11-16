@@ -11,6 +11,7 @@ WorkingDirectory=@HOME@/trader/current
 ExecStart=@HOME@/trader/venv/bin/python -m trader.main
 Restart=always
 RestartSec=5
+RestartPreventExitStatus=2
 NoNewPrivileges=true
 
 [Install]
