@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS trades(
   entry_t TEXT, entry_px REAL, exit_t TEXT, exit_px REAL, exit_reason TEXT, r_mult REAL, pnl REAL);
 CREATE TABLE IF NOT EXISTS events(ts TEXT, level TEXT, kind TEXT, msg TEXT);
 CREATE TABLE IF NOT EXISTS health(ts TEXT, last_tick_ts TEXT, bars_built INTEGER, lag_ms INTEGER);
+CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS recon(day TEXT, symbol TEXT, slot INTEGER, live_c REAL, hist_c REAL, diff REAL);
 """
 
@@ -84,6 +85,23 @@ class Store(object):
 
     def event(self, level, kind, msg):
         self.db.execute("INSERT INTO events VALUES(?,?,?,?)", (now_s(), level, kind, msg)); self.db.commit()
+
+    def kv_get(self, k, default=None):
+        r = self.db.execute("SELECT v FROM kv WHERE k=?", (k,)).fetchone()
+        return r["v"] if r else default
+
+    def kv_set(self, k, v):
+        self.db.execute("INSERT OR REPLACE INTO kv VALUES(?,?)", (k, str(v)))
+        self.db.commit()
+
+    def recent_events(self, n=10, kinds=None):
+        rows = [dict(r) for r in self.db.execute("SELECT rowid AS id, * FROM events ORDER BY rowid DESC LIMIT ?", (int(n) * 5,))]
+        if kinds:
+            rows = [r for r in rows if r["kind"] in kinds]
+        return list(reversed(rows[:int(n)]))
+
+    def closed_trades_for_day(self, day):
+        return [t for t in self.trades_for_day(day) if t["exit_t"] is not None]
 
     def close(self):
         self.db.close()

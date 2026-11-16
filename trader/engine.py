@@ -101,7 +101,7 @@ class _Index(object):
 
 class Engine(object):
     def __init__(self, store, broker, day, mode="paper", rr=3.0, midday_filter=True, max_hold=12,
-                 notify=None, rules_version=RULES_VERSION):
+                 notify=None, rules_version=RULES_VERSION, guard=None):
         self.store = store
         self.broker = broker
         self.day = day
@@ -111,6 +111,7 @@ class Engine(object):
         self.max_hold = max_hold
         self.notify = notify
         self.rules_version = rules_version
+        self.guard = guard
         self._ix = {}      # index name -> _Index
         self._of = {}      # symbol -> _Index
 
@@ -152,6 +153,18 @@ class Engine(object):
             return
         self._check_exit(ix, symbol, slot, None)
         self._progress(ix)
+
+    def flat(self, prices, slot):
+        """Close every open position now (manual /flat or /stop). prices: symbol -> last price."""
+        n = 0
+        for ix in self._ix.values():
+            p = ix.pos
+            if p is None:
+                continue
+            px = prices.get(p["symbol"], p["last_close"])
+            self._exit(ix, p, slot, px, "manual", (px - p["entry"]) / p["R"])
+            n += 1
+        return n
 
     def end_of_day(self):
         for ix in self._ix.values():
@@ -249,6 +262,10 @@ class Engine(object):
                 why.append("not-ATM")
             if not why and ix.taken:
                 why.append("one-position")
+            if not why and self.guard is not None:
+                ok, reason = self.guard.allow_entry(self.day, self.mode)
+                if not ok:
+                    why.append("risk:" + reason)
             if why:
                 self._record(ix, i, opt, "rejected", ",".join(why), sig, ix.gap, dist)
                 continue
