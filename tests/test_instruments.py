@@ -27,6 +27,7 @@ def _nifty_rows():
     return rows
 
 
+@unittest.skipUnless(os.path.exists(FIX), "real-dump fixture not shipped to VM")
 class SensexFixture(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
