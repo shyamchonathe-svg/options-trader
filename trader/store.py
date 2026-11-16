@@ -63,6 +63,22 @@ class Store(object):
                         (exit_t, exit_px, reason, r_mult, pnl, trade_id))
         self.db.commit()
 
+    def trade_for_signal(self, signal_id):
+        r = self.db.execute("SELECT * FROM trades WHERE signal_id=?", (signal_id,)).fetchone()
+        return dict(r) if r else None
+
+    def trade_is_open(self, trade_id):
+        r = self.db.execute("SELECT exit_t FROM trades WHERE id=?", (trade_id,)).fetchone()
+        return bool(r) and r["exit_t"] is None
+
+    def signals_for_day(self, day):
+        return [dict(r) for r in self.db.execute("SELECT * FROM signals WHERE day=? ORDER BY slot, symbol", (day,))]
+
+    def trades_for_day(self, day):
+        q = ("SELECT t.*, s.symbol, s.slot, s.entry, s.stop, s.target FROM trades t JOIN signals s ON s.id=t.signal_id "
+             "WHERE s.day=? ORDER BY s.slot, s.symbol")
+        return [dict(r) for r in self.db.execute(q, (day,))]
+
     def open_trades(self):
         return [dict(r) for r in self.db.execute("SELECT * FROM trades WHERE exit_t IS NULL")]
 
