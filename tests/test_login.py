@@ -153,6 +153,8 @@ class Flow(unittest.TestCase):
         d.login.handle({"status": "success", "request_token": "t", "state": state_of(d.login.link())})
         step(d, clk, at(16, 31))
         self.assertTrue(any("Recovered" in x for x in texts(tr)))
+        self.assertFalse(any(x.startswith("signal") for x in texts(tr)))     # no per-signal flood during recovery
+        self.assertTrue(state.token_ok)
         self.assertEqual(st.trades_for_day("2026-11-17"), [])
         n = len(tr.sent)
         step(d, clk, at(16, 32)); step(d, clk, at(16, 40))

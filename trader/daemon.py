@@ -54,6 +54,7 @@ class Daemon(object):
         self.login = None                 # LoginManager (set by main.build when a Kite provider exists)
         self.recover_requested = False
         self.last_recover_try = None
+        self.mute = False                 # True while replaying history: no per-signal Telegram lines
 
     # ------------------------------------------------------------ small helpers
     def _k(self, name):
@@ -245,14 +246,20 @@ class Daemon(object):
         if plan is None:
             return
         self.state.trading_blocked = self.state.trading_blocked or "recovery run"
-        n = self._setup(plan, start_feed=False)
-        if self.engine is not None and self.pipe is not None:
-            self.pipe.flush()
-            self.engine.end_of_day()
+        self.mute = True
+        try:
+            n = self._setup(plan, start_feed=False)
+            if self.engine is not None and self.pipe is not None:
+                self.pipe.flush()
+                self.engine.end_of_day()
+        finally:
+            self.mute = False
+        self.state.token_ok = True
         self.store.kv_set(self._k("recovered"), "1")
         sigs = [x for x in self.store.signals_for_day(self.day) if x["reasons"] == "late_login"]
-        self._say("info", "Recovered %d bars for %s from history (DATA_ONLY, nothing traded). %d signal(s) would have fired "
-                          "(recorded as blocked: late login)." % (n, self.day, len(sigs)))
+        lines = ["  %s at %s" % (x["symbol"], R.tstr(x["slot"])) for x in sigs]
+        self._say("info", "Recovered %d bars for %s from history (DATA_ONLY, nothing traded). The rules ran on the whole day: "
+                          "%d signal(s) would have fired%s" % (n, self.day, len(sigs), (":\n" + "\n".join(lines)) if lines else "."))
 
     # ------------------------------------------------------------ morning
     def _morning(self, now):
@@ -280,11 +287,15 @@ class Daemon(object):
         self.morning_err = None
         self._setup(plan, start_feed=True)
 
+    def _engine_notify(self, kind, payload):
+        if not self.mute:
+            self.notify(kind, payload)
+
     def _setup(self, plan, start_feed=True):
         """Build engine + pipeline from a morning plan, back-fill, start the feed. Returns bars back-filled."""
         data_only = bool(self.state.trading_blocked)
         eng = Engine(self.store, self.broker, self.day, mode="live" if self.state.live_active() else "paper",
-                     notify=self.notify, guard=RiskGuard(self.store, self.state))
+                     notify=self._engine_notify, guard=RiskGuard(self.store, self.state))
         if data_only:
             eng.accepting, eng.block_reason = False, "late_login"
         syms = []
@@ -296,6 +307,7 @@ class Daemon(object):
         self.pipe = Pipeline(self.store, eng, syms)
         back = plan.get("backfill") or []
         if back:
+            was_muted, self.mute = self.mute, True
             eng.accepting = False
             for sym, slot, o, h, l, c in back:
                 eng.on_open(sym, slot, o)
@@ -304,6 +316,7 @@ class Daemon(object):
                 bb = self.pipe.bb[sym]
                 bb.day, bb.closed_slot, bb.last_close = self.day, max(bb.closed_slot, slot), c
             eng.accepting = not data_only
+            self.mute = was_muted
         self.feed = plan.get("feed") if start_feed else None
         if self.feed is not None:
             self.feed.set_handler(self.on_tick)

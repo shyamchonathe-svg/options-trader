@@ -23,7 +23,9 @@ def format_event(kind, p):
     if kind == "signal":
         if p["status"] in ("skipped", "dropped"):
             return None
-        tag = "SIGNAL" if p["status"] == "traded" else "signal rejected"
+        if p["status"] == "rejected" and p.get("reasons") == "not-ATM":
+            return None             # by-design noise: stays in the database and the exports, not on Telegram
+        tag = {"traded": "SIGNAL", "missed": "signal MISSED"}.get(p["status"], "signal rejected")
         return "%s %s at %s%s" % (tag, p["symbol"], p["t"], (" (%s)" % p["reasons"]) if p["reasons"] else "")
     if kind == "entry":
         return "ENTRY %s qty %s @ %.2f  stop %.2f  target %.2f  (%s)" % (p["symbol"], p["qty"], p["price"], p["stop"], p["target"], p["t"])
