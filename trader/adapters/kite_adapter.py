@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import time
+import urllib.parse
 
 from trader import instruments as I
 from trader.clock import ist_now
@@ -222,27 +223,43 @@ class KiteProvider(object):
         self.verified_day = today
         return True
 
-    def exchange_token(self, text):
-        """Controller hook for /token <request_token | redirect URL>."""
+    def login(self, request_token):
+        """Exchange a request_token. Returns (ok, message, user_id). The token is saved ONLY if the Zerodha user id
+        matches KITE_USER_ID (when configured), so a stranger cannot log the bot into another account."""
         if not self.api_key or not self.api_secret:
-            return "Kite API key/secret are not configured (run: python -m trader.setup_kite)."
-        rt = parse_request_token(text)
+            return False, "Kite API key/secret are not configured (run: python -m trader.setup_kite).", ""
         try:
-            data = self.kite().generate_session(rt, api_secret=self.api_secret)
+            data = self.kite().generate_session(request_token, api_secret=self.api_secret)
         except Exception as e:
-            return "Kite login failed: %s (get a NEW request_token from the login link; each works once)." % type(e).__name__
+            return False, "Kite login failed: %s (each login link works once; use /login for a new one)." % type(e).__name__, ""
+        user = str(data.get("user_id", ""))
+        want = self.cfg.env.get("KITE_USER_ID", "").strip().upper()
+        if want and user.upper() != want:
+            log.warning("login rejected: unexpected user id")
+            return False, "Login rejected: wrong Zerodha account (expected %s)." % want, user
         at = data["access_token"]
         self.kite().set_access_token(at)
         today = self.clock().strftime("%Y-%m-%d")
-        self._save_token(at, data.get("user_id", ""), today)
+        self._save_token(at, user, today)
         self.verified_day = today
-        return "Kite token saved for %s (valid until ~06:00 tomorrow). Morning setup will run within 30 s." % data.get("user_id", "user")
+        return True, "Kite login OK for %s (valid until ~06:00 tomorrow)." % (user or "user"), user
+
+    def exchange_token(self, text):
+        """Controller hook for /token <request_token | redirect URL> (fallback when the web receiver is down)."""
+        ok, msg, _ = self.login(parse_request_token(text))
+        return msg
+
+    def login_url(self, state=None):
+        url = self.kite().login_url()
+        if state:
+            url += "&redirect_params=" + urllib.parse.quote("state=" + state, safe="")
+        return url
 
     def config_text(self):
         if not self.api_key:
             return "kite: not configured"
         try:
-            return "kite login: %s" % self.kite().login_url()
+            return "kite login: %s" % self.login_url()
         except Exception as e:
             return "kite login url unavailable: %r" % e
 

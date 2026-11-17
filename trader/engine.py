@@ -112,6 +112,7 @@ class Engine(object):
         self.notify = notify
         self.rules_version = rules_version
         self.guard = guard
+        self.block_reason = "backfill"   # recorded as the reason when accepting is False ('late_login' on data-only days)
         self.accepting = True   # False while back-filling history after a late start: no NEW orders, signals recorded as 'missed'
         self._ix = {}      # index name -> _Index
         self._of = {}      # symbol -> _Index
@@ -296,7 +297,7 @@ class Engine(object):
         if not self.accepting:
             old = self.store.signal_id(self.day, opt.symbol, i)
             if old is None or self.store.trade_for_signal(old) is None:
-                self._record(ix, i, opt, "missed", "backfill", sig, gap, dist)
+                self._record(ix, i, opt, "missed", self.block_reason, sig, gap, dist)
                 return
         sid = self._record(ix, i, opt, "traded", "", sig, gap, dist)
         tr = self.store.trade_for_signal(sid)

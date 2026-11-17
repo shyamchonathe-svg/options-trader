@@ -42,8 +42,14 @@ def build(cfg, transport, provider=None, broker=None, clock=ist_now):
             os.utime(cfg.heartbeat, None)
 
     daemon = Daemon(store, state, notifier, provider, broker or PaperBroker(), cfg=cfg, sender=notifier, heartbeat=beat)
-    hooks = {"flat": daemon.flat, "restart": daemon.request_restart, "export": daemon.export_now}
-    if provider is not None and hasattr(provider, "exchange_token"):
+    hooks = {"flat": daemon.flat, "restart": daemon.request_restart, "export": daemon.export_now,
+             "skip": daemon.set_skip, "holiday": daemon.add_holiday, "recover": daemon.request_recover}
+    if provider is not None and hasattr(provider, "login"):
+        from trader.login import LoginManager
+        daemon.login = LoginManager(store, provider, daemon.notify, clock)
+        hooks["token"] = daemon.login.manual
+        hooks["login"] = daemon.login_link
+    elif provider is not None and hasattr(provider, "exchange_token"):
         hooks["token"] = provider.exchange_token
     if provider is not None and hasattr(provider, "config_text"):
         hooks["config"] = provider.config_text
@@ -52,10 +58,26 @@ def build(cfg, transport, provider=None, broker=None, clock=ist_now):
     return store, state, notifier, daemon, bot
 
 
-def run(cfg, transport, provider=None, max_loops=None, sleep=time.sleep, clock=ist_now):
+def run(cfg, transport, provider=None, max_loops=None, sleep=time.sleep, clock=ist_now, serve_login=False):
     store, state, notifier, daemon, bot = build(cfg, transport, provider, clock=clock)
+    server = None
+    if serve_login and daemon.login is not None:
+        from trader.login import LoginServer
+        try:
+            server = LoginServer(daemon.login, port=int(cfg.env.get("LOGIN_PORT") or 8001))
+            server.start()
+        except OSError as e:
+            store.event("ERROR", "login", "receiver not started: %s (use /token as fallback)" % e)
     notifier.send("Trader %s started. mode=%s%s, risk %s. /help" % (
         state.version, state.mode, " (live ENABLED in config)" if state.live_enabled else "", state.risk))
+    try:
+        return _loop(daemon, bot, store, notifier, state, sleep, clock, max_loops)
+    finally:
+        if server is not None:
+            server.stop()
+
+
+def _loop(daemon, bot, store, notifier, state, sleep, clock, max_loops):
     backoff_until = 0.0
     loops = 0
     while not daemon.restart_requested:
@@ -96,7 +118,7 @@ def main():
             provider = KiteProvider(cfg)
         except ImportError as e:
             print("Kite configured but library missing (%s): pip install kiteconnect; running control-plane only." % e)
-    run(cfg, TelegramAPI(tok), provider)
+    run(cfg, TelegramAPI(tok), provider, serve_login=True)
     return 0     # exit code 0 + Restart=always -> systemd restarts us
 
 

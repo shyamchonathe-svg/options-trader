@@ -11,10 +11,11 @@ def main(argv=None):
     cfg = Config()
     key = getpass.getpass("Kite API key (hidden): ").strip()
     secret = getpass.getpass("Kite API secret (hidden): ").strip()
-    if not key or not secret:
-        print("Both are required.")
+    uid = input("Your Zerodha user ID (e.g. AB1234, visible on the login page): ").strip().upper()
+    if not key or not secret or not uid:
+        print("All three are required.")
         return 1
-    write_env(cfg.env_path, {"KITE_API_KEY": key, "KITE_API_SECRET": secret})
+    write_env(cfg.env_path, {"KITE_API_KEY": key, "KITE_API_SECRET": secret, "KITE_USER_ID": uid})
     print("Saved to %s (mode 0600). Now: sudo systemctl restart trader.service, then /config in Telegram for the login link." % cfg.env_path)
     return 0
 

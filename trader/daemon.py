@@ -29,6 +29,8 @@ REMIND = T(15, 50)
 CAPTURE_TEXT = ("Daily capture (send today):\n1) Bhavcopies: NSE F&O zip, BSE F&O csv, ind_close csv -> data/raw/<date>/\n"
                 "2) 5m charts, clean + EMA10/20: Nifty, Sensex, India VIX, ATM and +/-1 strike CE and PE of both indices\n"
                 "3) Daily charts (Nifty, Sensex) only when asked. Tradebook only on real-money days.")
+LOGIN_PROMPTS = (T(8, 30), T(8, 50), T(9, 5), T(9, 12))
+DEFAULT_CUTOFF = "09:15"
 STALE_S = 90
 MORNING_RETRY_S = 30
 
@@ -49,6 +51,9 @@ class Daemon(object):
         self.morning_err = None
         self.last_health = None
         self.restart_requested = False
+        self.login = None                 # LoginManager (set by main.build when a Kite provider exists)
+        self.recover_requested = False
+        self.last_recover_try = None
 
     # ------------------------------------------------------------ small helpers
     def _k(self, name):
@@ -85,6 +90,47 @@ class Daemon(object):
             return "Export sent (%d KB)." % (os.path.getsize(path) // 1024)
         return "Saved %s" % path
 
+    # ---- login / day-skipping hooks
+    def login_link(self):
+        if self.login is None:
+            return None
+        return "Tap, log in at Zerodha (2FA), done:\n%s\n(valid once, 15 minutes)" % self.login.link()
+
+    def holidays_path(self):
+        return os.path.join(self.cfg.state, "holidays.txt") if self.cfg else None
+
+    def is_holiday(self, day):
+        p = self.holidays_path()
+        if p and os.path.exists(p):
+            with open(p) as f:
+                return day in set(l.split("#")[0].strip() for l in f)
+        return False
+
+    def skip_today(self):
+        return bool(self.store.kv_get("skip:%s" % self.day)) or self.is_holiday(self.day)
+
+    def set_skip(self, on):
+        self.store.kv_set("skip:%s" % self.day, "1" if on else "")
+        return "Today (%s) will be %s." % (self.day, "SKIPPED: no prompts, no trading, no data run" if on else "a normal trading day again")
+
+    def add_holiday(self, day):
+        p = self.holidays_path()
+        with open(p, "a") as f:
+            f.write(day + "\n")
+        return "Holiday %s added." % day
+
+    def request_recover(self):
+        self.recover_requested = True
+        return "Recovery requested: the day's bars will be pulled from history within 30 s (needs a login today)."
+
+    def cutoff(self):
+        raw = (self.cfg.env.get("LOGIN_CUTOFF") if self.cfg else None) or DEFAULT_CUTOFF
+        try:
+            h, m = raw.split(":")
+            return T(int(h), int(m), 59)
+        except ValueError:
+            return T(9, 15, 59)
+
     now_cache = datetime.datetime(2000, 1, 1)
 
     # ------------------------------------------------------------ main step
@@ -97,9 +143,15 @@ class Daemon(object):
             self._new_day(day)
         if self.heartbeat:
             self.heartbeat()
+        if self.login is not None:
+            self.login.pump()
         if now.weekday() >= 5:
             return
         t = now.time()
+        if self.skip_today():
+            self.state.trading_blocked = "day skipped"
+            return
+        self._login_flow(now, t)
         if self.state.mode == "live" and self.state.armed and not getattr(self.broker, "live", False):
             self.state.armed = False
             self._say("info", "WARNING: live armed but no live broker is installed; disarmed.")
@@ -107,6 +159,8 @@ class Daemon(object):
             self.engine.mode = "live" if self.state.live_active() else "paper"
         if MORNING <= t < EOD and self.engine is None:
             self._morning(now)
+        if (t >= EOD or self.recover_requested) and self.engine is None:
+            self._recover(now)
         if t >= READY and t < EOD and self._once("ready"):
             self._say("ready", self._ready_text())
         self._drain()
@@ -132,6 +186,70 @@ class Daemon(object):
         self.day, self.engine, self.pipe, self.feed = day, None, None, None
         self.stale_alerted, self.morning_err, self.last_morning_try = False, None, None
         self.state.feed_ok = None
+        self.state.trading_blocked = None
+        self.recover_requested, self.last_recover_try = False, None
+
+    # ------------------------------------------------------------ login flow
+    def _login_flow(self, now, t):
+        """Prompts, and the one rule: no login by the cutoff => today is DATA_ONLY (never trades). Data still flows."""
+        if self.login is None:
+            return
+        la = self.login.login_at() if self.login.logged_in_today() else None
+        cut = self.cutoff()
+        if la is not None:
+            h, m, sec = [int(x) for x in la.split(":")]
+            self.state.trading_blocked = None if datetime.time(h, m, sec) <= cut else "late login (%s, cutoff %s)" % (la[:5], cut.strftime("%H:%M"))
+        elif t > cut:
+            self.state.trading_blocked = "no login by %s" % cut.strftime("%H:%M")
+        else:
+            self.state.trading_blocked = None
+        if la is not None or t >= EOD:
+            return
+        if t <= cut:
+            due = [p for p in LOGIN_PROMPTS if t >= p]
+            if due:
+                keys = ["prompt-%02d%02d" % (p.hour, p.minute) for p in due]
+                fresh = [k for k in keys if not self.store.kv_get(self._k(k))]
+                for k in keys:
+                    self.store.kv_set(self._k(k), "1")
+                if fresh:
+                    self._say("info", "Kite login needed (trading needs a login by %s).\n%s" % (cut.strftime("%H:%M"), self.login_link()))
+        elif self._once("cutoff-passed"):
+            self._say("info", "No login by %s: TODAY IS DATA_ONLY (no trading). Log in any time before midnight and the day's data "
+                              "is still collected.\n%s" % (cut.strftime("%H:%M"), self.login_link()))
+
+    def _recover(self, now):
+        """After the close (or on /recover): a login exists but no engine ran today -> pull the whole day's bars from history."""
+        if self.provider is None or self.login is None or self.store.kv_get(self._k("recovered")):
+            return
+        if not self.recover_requested and not (self.login.logged_in_today() and self.engine is None):
+            return
+        if self.last_recover_try is not None and (now - self.last_recover_try).total_seconds() < MORNING_RETRY_S:
+            return
+        self.last_recover_try = now
+        if not self.login.logged_in_today():
+            if self.recover_requested and self._once("recover-nologin"):
+                self._say("info", "Recovery needs a login first: /login")
+            return
+        try:
+            plan = self.provider.morning(self.day)
+        except Exception as e:
+            self.store.event("ERROR", "recover", "%s: %s" % (type(e).__name__, str(e)[:150]))
+            if self._once("recover-alert"):
+                self._say("info", "Recovery failed, retrying every %ds: %s" % (MORNING_RETRY_S, type(e).__name__))
+            return
+        self.recover_requested = False
+        if plan is None:
+            return
+        self.state.trading_blocked = self.state.trading_blocked or "recovery run"
+        n = self._setup(plan, start_feed=False)
+        if self.engine is not None and self.pipe is not None:
+            self.pipe.flush()
+            self.engine.end_of_day()
+        self.store.kv_set(self._k("recovered"), "1")
+        sigs = [x for x in self.store.signals_for_day(self.day) if x["reasons"] == "late_login"]
+        self._say("info", "Recovered %d bars for %s from history (DATA_ONLY, nothing traded). %d signal(s) would have fired "
+                          "(recorded as blocked: late login)." % (n, self.day, len(sigs)))
 
     # ------------------------------------------------------------ morning
     def _morning(self, now):
@@ -143,7 +261,7 @@ class Daemon(object):
         try:
             self.state.token_ok = self.provider.token_ok()
             if not self.state.token_ok:
-                if self._once("token-alert"):
+                if self.login is None and self._once("token-alert"):
                     self._say("token_missing", "Kite token missing or expired. Send /token <request_token> (login link: /config).")
                 return
             plan = self.provider.morning(self.day)
@@ -157,8 +275,15 @@ class Daemon(object):
             self.morning_err = "not a trading day / no session"
             return
         self.morning_err = None
+        self._setup(plan, start_feed=True)
+
+    def _setup(self, plan, start_feed=True):
+        """Build engine + pipeline from a morning plan, back-fill, start the feed. Returns bars back-filled."""
+        data_only = bool(self.state.trading_blocked)
         eng = Engine(self.store, self.broker, self.day, mode="live" if self.state.live_active() else "paper",
                      notify=self.notify, guard=RiskGuard(self.store, self.state))
+        if data_only:
+            eng.accepting, eng.block_reason = False, "late_login"
         syms = []
         for spec, prev_close, seeds in plan["indexes"]:
             eng.add_index(spec, prev_close, seeds)
@@ -175,13 +300,14 @@ class Daemon(object):
                 self.store.put_bar(self.day, sym, slot, o, h, l, c, 0, "backfill")
                 bb = self.pipe.bb[sym]
                 bb.day, bb.closed_slot, bb.last_close = self.day, max(bb.closed_slot, slot), c
-            eng.accepting = True
-        self.feed = plan.get("feed")
+            eng.accepting = not data_only
+        self.feed = plan.get("feed") if start_feed else None
         if self.feed is not None:
             self.feed.set_handler(self.on_tick)
             self.feed.subscribe(syms)
             self.feed.start()
-        self.store.event("INFO", "morning", "ready: %d symbols, backfill %d bars" % (len(syms), len(back)))
+        self.store.event("INFO", "morning", "ready: %d symbols, backfill %d bars%s" % (len(syms), len(back), " DATA_ONLY" if data_only else ""))
+        return len(back)
 
     def _ready_text(self):
         if self.provider is None:
@@ -246,6 +372,11 @@ class Daemon(object):
 
     def _summary(self, now):
         text = day_summary(self.store, self.day)
+        if self.state.trading_blocked:
+            late = len([x for x in self.store.signals_for_day(self.day) if x["reasons"] == "late_login"])
+            text += "\nDATA_ONLY: %s. %d signal(s) would have fired, none traded." % (self.state.trading_blocked, late)
+            if self.login is not None and not self.login.logged_in_today():
+                text += "\nNo login today: no data was collected. Log in before midnight (/login) to recover the day's bars."
         if self.provider is None:
             text += "\n(no market-data provider configured)"
         self._say("summary", text)

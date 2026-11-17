@@ -21,10 +21,11 @@ HELP = """Read-only: /status /health /positions /signals [day] /why HH:MM [symbo
 Control: /pause /resume /stop /flat /restart /note <text> /ack
 Risk: /set <key> <value>   keys: %s
 Live (needs code+PIN): /mode shadow|live /arm live /disarm   confirm with: /yes <code> [PIN]
-Token: /token <request_token>""" % ", ".join(sorted(RISK_BOUNDS))
+Login: /login (one-tap link)  /token <request_token or URL> (fallback)  /recover
+Days: /skip  /unskip  /holiday YYYY-MM-DD""" % ", ".join(sorted(RISK_BOUNDS))
 
 COMMANDS = ("help start status health positions signals why trades summary risk bars config logs replay export "
-            "pause resume stop flat restart note ack set mode arm disarm token yes").split()
+            "pause resume stop flat restart note ack set mode arm disarm token yes login skip unskip holiday recover").split()
 
 
 def _fmt_r(x):
@@ -102,9 +103,10 @@ class Controller(object):
         openp = [t for t in tr if t["exit_t"] is None]
         r = sum(t["r_mult"] or 0.0 for t in tr if t["exit_t"] is not None)
         age = "n/a" if st.last_tick_ts is None else "%ds" % max(0, int((now - st.last_tick_ts).total_seconds()))
-        return ("v%s  mode=%s armed=%s  paused=%s stopped=%s\nfeed=%s last tick %s  token=%s\n"
+        return ("v%s  mode=%s armed=%s  paused=%s stopped=%s\nfeed=%s last tick %s  token=%s  day=%s\n"
                 "today: signals %d, trades %d (open %d), closed R %s") % (
             st.version, st.mode, st.armed, st.paused, st.stopped, st.feed_ok, age, st.token_ok,
+            ("DATA_ONLY: " + st.trading_blocked) if st.trading_blocked else "ok",
             len(self.store.signals_for_day(day)), len(tr), len(openp), _fmt_r(r))
 
     def cmd_health(self, args, now):
@@ -220,6 +222,28 @@ class Controller(object):
         r = self._hook("token", args[0])
         return r or "Token handling is not available in this build."
 
+    def cmd_login(self, args, now):
+        r = self._hook("login")
+        return r or "Login links are not available in this build (no Kite configured)."
+
+    def cmd_skip(self, args, now):
+        return self._hook("skip", True) or "Not available."
+
+    def cmd_unskip(self, args, now):
+        return self._hook("skip", False) or "Not available."
+
+    def cmd_holiday(self, args, now):
+        if not args:
+            return "usage: /holiday YYYY-MM-DD"
+        try:
+            datetime.datetime.strptime(args[0], "%Y-%m-%d")
+        except ValueError:
+            return "Date must look like 2026-11-25."
+        return self._hook("holiday", args[0]) or "Not available."
+
+    def cmd_recover(self, args, now):
+        return self._hook("recover") or "Not available."
+
     def cmd_stop(self, args, now):
         return self._ask("stop", [], "STOP: pause new entries AND close all open positions", False, now)
 
@@ -250,6 +274,8 @@ class Controller(object):
             return "Live trading is not enabled in this build."
         if self.state.mode != "live":
             return "Set /mode live first."
+        if self.state.trading_blocked:
+            return "No trading today (%s). Live cannot be armed." % self.state.trading_blocked
         return self._live_ask("arm_live", "ARM live trading for today (auto-disarms at 15:45)", now)
 
     def _live_ask(self, action, desc, now):

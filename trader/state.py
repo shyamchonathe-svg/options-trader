@@ -20,6 +20,7 @@ class RuntimeState(object):
         self.last_tick_ts = None
         self.feed_ok = None
         self.token_ok = None
+        self.trading_blocked = None     # None, or why today is DATA_ONLY (late / missing login, skipped day)
         self.mode = store.kv_get("mode", "shadow")
         self.paused = store.kv_get("paused", "0") == "1"
         self.stopped = store.kv_get("stopped", "0") == "1"
@@ -51,7 +52,7 @@ class RuntimeState(object):
 
     def live_active(self):
         """Orders may be sent only when live is enabled in config, mode is live AND armed today."""
-        return self.live_enabled and self.mode == "live" and self.armed
+        return self.live_enabled and self.mode == "live" and self.armed and not self.trading_blocked
 
     def set_risk(self, key, value):
         self.risk[key] = value
