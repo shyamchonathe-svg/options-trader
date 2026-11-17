@@ -1,6 +1,7 @@
 """Service entry point:  python -m trader.main     (systemd unit: trader.service)
 One thread: every loop = daemon.step(now) + a 1-second Telegram long-poll. Ticks from a feed thread arrive via a queue.
 /restart simply exits; systemd (Restart=always) starts the newest ~/trader/current."""
+import logging
 import os
 import sys
 import time
@@ -42,6 +43,10 @@ def build(cfg, transport, provider=None, broker=None, clock=ist_now):
 
     daemon = Daemon(store, state, notifier, provider, broker or PaperBroker(), cfg=cfg, sender=notifier, heartbeat=beat)
     hooks = {"flat": daemon.flat, "restart": daemon.request_restart, "export": daemon.export_now}
+    if provider is not None and hasattr(provider, "exchange_token"):
+        hooks["token"] = provider.exchange_token
+    if provider is not None and hasattr(provider, "config_text"):
+        hooks["config"] = provider.config_text
     ctl = Controller(store, state, cfg.env.get("TG_CHAT_ID"), PinFile(cfg.pin), hooks=hooks, clock=clock)
     bot = Bot(transport, ctl, store)
     return store, state, notifier, daemon, bot
@@ -82,7 +87,16 @@ def main():
     if not tok or not chat:
         print("No Telegram settings. Run: python -m trader.setup_telegram")
         return 2
-    run(cfg, TelegramAPI(tok))
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    provider = None
+    if cfg.env.get("KITE_API_KEY") and cfg.env.get("KITE_API_SECRET"):
+        try:
+            from trader.adapters.kite_adapter import KiteProvider
+            import kiteconnect      # noqa: F401  (fail early and loudly if the library is missing)
+            provider = KiteProvider(cfg)
+        except ImportError as e:
+            print("Kite configured but library missing (%s): pip install kiteconnect; running control-plane only." % e)
+    run(cfg, TelegramAPI(tok), provider)
     return 0     # exit code 0 + Restart=always -> systemd restarts us
 
 

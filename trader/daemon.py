@@ -25,6 +25,10 @@ from trader.risk import RiskGuard
 T = datetime.time
 MORNING, READY, STALE_FROM, EOD, SUMMARY = T(9, 0), T(9, 10), T(9, 20), T(15, 31), T(15, 45)
 MARKET_END = T(15, 25)
+REMIND = T(15, 50)
+CAPTURE_TEXT = ("Daily capture (send today):\n1) Bhavcopies: NSE F&O zip, BSE F&O csv, ind_close csv -> data/raw/<date>/\n"
+                "2) 5m charts, clean + EMA10/20: Nifty, Sensex, India VIX, ATM and +/-1 strike CE and PE of both indices\n"
+                "3) Daily charts (Nifty, Sensex) only when asked. Tradebook only on real-money days.")
 STALE_S = 90
 MORNING_RETRY_S = 30
 
@@ -114,6 +118,10 @@ class Daemon(object):
             self._end_of_day()
         if t >= SUMMARY and self._once("summary"):
             self._summary(now)
+        if t >= REMIND and self._once("capture-reminder"):
+            self._say("info", CAPTURE_TEXT)
+        if t >= REMIND and self.feed is not None and getattr(self.feed, "needs_restart", False):
+            self.request_restart()      # Twisted reactor cannot restart: fresh process for the next session
 
     def _new_day(self, day):
         if self.feed is not None:
