@@ -17,7 +17,9 @@ Read-only: /status /health /positions /signals /why /trades /summary /compare /r
 Control: /pause /resume /stop /flat /restart /note /ack. Risk: /set. Live (code + PIN): /mode /arm /disarm.
 Login: /login /token /recover. Days: /skip /unskip /holiday YYYY-MM-DD.
 
-## Deploying a release (no git on the VM yet)
+## Deploying a release
+Preferred once the VM has the git clone: `cd ~/trader/repo && git pull && bash tools/release.sh vX.Y.Z` (see docs/NEW_VM_SETUP.md).
+Fallback (no git access) - chunk paste:
 Lab: `cd live && BUNDLE_CHUNK=1900 python3 tools/bundle.py HEAD` -> `deploy/out/<version>/`.
 VM: paste `00_prepare.txt`, all `chunk_NN.txt` in order, then `99_install.txt` (verifies sha256, unpacks, runs tests),
 then `sudo systemctl restart trader.service`. Roll back: `ln -sfn ~/trader/releases/<old> ~/trader/current` and restart.
