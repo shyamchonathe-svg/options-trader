@@ -1,4 +1,12 @@
-# Hands-free weekly-options system (Nifty + Sensex) - DESIGN v0.1  (plan only, no code yet)
+# Hands-free weekly-options system (Nifty + Sensex) - DESIGN
+
+> STATUS (17 Nov 2026): Phase 1 is built and deployed in paper mode (release 6.x). This file holds the original plan
+> and requirements; where it differs from the code, `ARCHITECTURE.md` is authoritative. Differences: ATM filter is
+> `MAX_DIST_STEPS=1.5` with the option chain recorded +/-12 strikes; login is hands-free via Telegram link + Caddy
+> (no /token pasting); a 16:00 day report, VIX data capture, `/compare` exit analysis and a button menu exist.
+> Phase 2 (December): order layer, UI 2.0. Strategy v3 stays frozen until ~50 paper trades.
+
+# (original plan follows)
 
 ## 0. Why the first attempt failed (from its file list) -> rule for this one
 - many *_bk.py / .broken / backup_code copies  -> git is the backup; one file per responsibility; no copies.

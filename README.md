@@ -1,18 +1,17 @@
-# Weekly-options trader (Nifty + Sensex) - paper first, live later
-Design: docs/DESIGN.md.  Strategy: trader/rules_v3.py (frozen, v3.0).
+# Weekly-options trader (Nifty + Sensex) - Phase 1: paper trading
+
+Manual-login, hands-free-otherwise system. Strategy `trader/rules_v3.py` is FROZEN (v3) for out-of-sample testing;
+read the first results at about 50 trades. Live orders are OFF and come in Phase 2.
+
+Docs: `docs/DESIGN.md` (goals, decisions, status), `docs/ARCHITECTURE.md` (modules, data flow, safety),
+`docs/RUNBOOK.md` (deploy, daily routine, recovery).
 
 ## Layout
-- trader/          package (rules_v3, candles, store, feed; later instruments, engine, broker, notify, runner)
-- trader/adapters/ everything that talks to Kite lives here ONLY (untestable from the lab)
-- tests/           unit tests (stdlib unittest). tests/lab_* need the research data on the lab machine only.
-- tools/           gc.sh (commit helper), bundle.py (build the VM paste-bundle from git)
-- deploy/          systemd units, .env.example (no secrets ever in git)
+- `trader/` package; `trader/adapters/` is the only place that talks to Kite
+- `tests/` stdlib unittest (`python3 -m unittest discover -s tests -t .`); `tests/lab_*` need lab research data
+- `tools/` `gc.sh` (commit helper), `bundle.py` (VM paste bundle)
+- `deploy/` systemd units, Caddy template, `env.example` (no secrets in git)
 
-## Branches / versions
-- main: only tested, tagged releases (vX.Y.Z). The VM runs only tagged releases.
-- feature/<name>: all work; merge to main by fast-forward after tests pass; then tag.
-- Commit with tools/gc.sh "msg" (no AI attribution trailers).
-
-## Tests
-python3 -m unittest discover -s tests -t .
-python3 tests/lab_replay_check.py     # lab only: must print PASS - identical (the 11 known trades)
+## Workflow
+`main` = tested releases, tagged `vX.Y.Z`. Work on `feature/*`, fast-forward to `main` after tests pass.
+Commit with `tools/gc.sh "message"` (no AI attribution trailers).
