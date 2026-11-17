@@ -26,7 +26,7 @@ then `sudo systemctl restart trader.service`. Roll back: `ln -sfn ~/trader/relea
 
 ## Operations
 - Logs: `journalctl -u trader.service -n 50 --no-pager`. Status: `sudo systemctl status trader.service`.
-- Backup the state: copy `~/trader/state/trader.db` and `exports/` off the VM regularly (not automated yet).
+- Data backup: `trader-backup.timer` runs `tools/backup_data.sh` at 16:30 Mon-Fri. It exports each day's bars/signals/trades/events (never `kv`, which holds the token) as CSV.gz to branch `data-backup` of the private GitHub repo. Manual run / re-run a day: `bash ~/trader/current/tools/backup_data.sh 2026-11-18`. Restore = read the CSVs; `trader.db` itself is not stored in git. Secrets (`trader.env`, PIN) are NOT backed up: keep them in a password manager.
 - Rotate Kite secret: Kite developer console, then `python -m trader.setup_kite` on the VM.
 - Kite Connect plan renews 18 Dec (credits). Orders will need the static IP registered with Kite (December).
 - Reminders live in `state/reminders.txt` as `YYYY-MM-DD text`. Holidays add via `/holiday` or `state/holidays.txt`.
