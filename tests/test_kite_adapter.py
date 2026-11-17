@@ -332,8 +332,11 @@ class TestDaemonIntegration(unittest.TestCase):
         d.step(D(2026, 11, 17, 15, 49, 0))
         self.assertFalse(d.restart_requested)
         d.step(D(2026, 11, 17, 15, 50, 5))
-        self.assertTrue(d.restart_requested)
+        self.assertFalse(d.restart_requested)                      # not before the 16:00 day report
         self.assertTrue(any("Daily capture" in t for _, t in self.tr.sent))
+        d.step(D(2026, 11, 17, 16, 0, 5))
+        self.assertTrue(d.restart_requested)
+        self.assertTrue(any(t.startswith("Day report") for _, t in self.tr.sent))
         n = len([1 for _, t in self.tr.sent if "Daily capture" in t])
         d.step(D(2026, 11, 17, 15, 51, 0))
         self.assertEqual(len([1 for _, t in self.tr.sent if "Daily capture" in t]), n)    # once a day

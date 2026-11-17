@@ -7,25 +7,58 @@ def _minutes(hhmm):
     return int(h) * 60 + int(m)
 
 
+def _bars(store, day, symbol):
+    by = {}
+    for src in ("backfill", "live"):                 # live bars win where both exist
+        for b in store.get_bars(day, symbol, src):
+            by[b["slot"]] = b
+    return by
+
+
+def _peak(store, day, t):
+    """How far the option ran after entry, in R: within the 12-bar hold window, and to the day's last bar."""
+    R = t["entry"] - t["stop"]
+    by = _bars(store, day, t["symbol"])
+    e = t["slot"] + 1
+    if R <= 0 or e not in by:
+        return ""
+    win = [by[j] for j in range(e, e + 12) if j in by]
+    rest = [by[j] for j in sorted(by) if j >= e]
+    hw = max(win, key=lambda b: b["h"])
+    pw = max(rest, key=lambda b: b["h"])
+    return "\n      ran up to %+.1fR in the 12-bar window, %+.1fR by day end (high %.2f)" % (
+        (hw["h"] - t["entry"]) / R, (pw["h"] - t["entry"]) / R, pw["h"])
+
+
+def _trade_line(store, day, t, tag):
+    hold = "" if t["exit_t"] is None else " held %d min" % (_minutes(t["exit_t"]) - _minutes(t["entry_t"]))
+    ex = "OPEN" if t["exit_t"] is None else "exit %s @ %.2f (%s)" % (t["exit_t"], t["exit_px"], t["exit_reason"])
+    r = "" if t["r_mult"] is None else "  R %+.2f" % t["r_mult"]
+    return "  %s%s\n      entry %s @ %.2f  stop %.2f  target %.2f  %s%s%s%s" % (
+        tag, t["symbol"], t["entry_t"], t["entry_px"], t["stop"], t["target"], ex, r, hold, _peak(store, day, t))
+
+
 def day_summary(store, day):
     sigs = store.signals_for_day(day)
     trs = store.trades_for_day(day)
     closed = [t for t in trs if t["exit_t"] is not None]
     wins = len([t for t in closed if (t["r_mult"] or 0) > 0])
     r = sum(t["r_mult"] or 0.0 for t in closed)
-    rej = len([s for s in sigs if s["status"] == "rejected"])
+    rej = [s for s in sigs if s["status"] == "rejected"]
     real = len([s for s in sigs if s["status"] in ("traded", "missed")])
-    lines = ["Summary %s: %d signals, %d trades, %d closed (%d win / %d loss), R %+.2f  [%d pattern matches checked, %d rejected]" % (
-        day, real, len(trs), len(closed), wins, len(closed) - wins, r, len(sigs), rej)]
+    lines = ["Day report %s: %s" % (day, "%d trade(s), %d closed (%d win / %d loss), R %+.2f" % (
+        len(trs), len(closed), wins, len(closed) - wins, r) if trs else "NO TRADE today")]
     for t in trs:
-        lines.append("  %s %s in %.2f -> %s R %s" % (
-            t["symbol"], t["entry_t"], t["entry_px"],
-            "open" if t["exit_t"] is None else "%.2f %s" % (t["exit_px"], t["exit_reason"]),
-            "n/a" if t["r_mult"] is None else "%+.2f" % t["r_mult"]))
-    for t in store.sim_trades_for_day(day):
-        lines.append("  late-sim %s in %s %.2f -> %s %.2f %s R %+.2f (hold %s min)" % (
-            t["symbol"], t["entry_t"], t["entry_px"], t["exit_t"], t["exit_px"], t["exit_reason"], t["r_mult"],
-            _minutes(t["exit_t"]) - _minutes(t["entry_t"])))
+        lines.append(_trade_line(store, day, t, ""))
+    sims = store.sim_trades_for_day(day)
+    for t in sims:
+        lines.append(_trade_line(store, day, t, "[late-sim, not a real trade] "))
+    why = {}
+    for s in rej:
+        for w in (s["reasons"] or "?").split(","):
+            why[w] = why.get(w, 0) + 1
+    lines.append("Checked %d pattern matches across the chains: %d signal(s), %d rejected%s." % (
+        len(sigs), real, len(rej), (" (" + ", ".join("%s %d" % kv for kv in sorted(why.items())) + ")") if why else ""))
     return "\n".join(lines)
 
 

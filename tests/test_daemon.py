@@ -61,13 +61,13 @@ def texts(tr): return [t for _, t in tr.sent]
 class Life(unittest.TestCase):
     def test_no_provider_day(self):
         st, state, tr, d, cfg = make(None)
-        for t in (at(8, 0), at(9, 11), at(15, 32), at(15, 46)):
+        for t in (at(8, 0), at(9, 11), at(15, 32), at(16, 1)):
             d.step(t)
         self.assertTrue(any("no market-data provider" in x for x in texts(tr)))
         self.assertEqual(len(tr.docs), 1)
         n = len(tr.sent)
         d2 = Daemon(st, state, Notifier(tr, "1", st), None, PaperBroker(), cfg=cfg)
-        d2.step(at(15, 47))                       # restart later same day: nothing repeated
+        d2.step(at(16, 2))                       # restart later same day: nothing repeated
         self.assertEqual(len(tr.sent), n); self.assertEqual(len(tr.docs), 1)
         self.assertTrue(os.path.exists(os.path.join(cfg.exports, "trader_2026-11-17.db.gz")))
 
@@ -217,13 +217,13 @@ class EndToEnd(unittest.TestCase):
                     for sec, px in ((5, b[0]), (20, b[1]), (35, b[2]), (50, b[3])):
                         send(sym, t0 + datetime.timedelta(seconds=sec), px)
                 d.step(t0 + datetime.timedelta(minutes=5, seconds=3))
-            d.step(base.replace(hour=15, minute=32)); d.step(base.replace(hour=15, minute=46))
+            d.step(base.replace(hour=15, minute=32)); d.step(base.replace(hour=16, minute=1))
             s2, b2 = Store(), PaperBroker()
             run_dataset(s2, b2, ds)
             f = lambda s: [(t["symbol"], t["slot"], t["entry"], t["stop"], t["exit_reason"], t["r_mult"]) for t in s.trades_for_day(ds["day"])]
             self.assertEqual(f(st), f(s2), key)
             total += len(f(s2))
-            self.assertTrue(any(x.startswith("Summary") for x in texts(tr)), key)
+            self.assertTrue(any(x.startswith("Day report") for x in texts(tr)), key)
         self.assertGreaterEqual(total, 3)
 
 

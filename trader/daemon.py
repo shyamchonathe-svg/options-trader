@@ -19,11 +19,12 @@ from trader.engine import Engine
 from trader.export import make_export
 from trader.notify import day_summary
 from trader.pipeline import Pipeline
+from trader import reminders
 from trader.recon import reconcile
 from trader.risk import RiskGuard
 
 T = datetime.time
-MORNING, READY, STALE_FROM, EOD, SUMMARY = T(9, 0), T(9, 10), T(9, 20), T(15, 31), T(15, 45)
+MORNING, READY, STALE_FROM, EOD, SUMMARY = T(9, 0), T(9, 10), T(9, 20), T(15, 31), T(16, 0)
 MARKET_END = T(15, 25)
 REMIND = T(15, 50)
 CAPTURE_TEXT = ("Daily capture (send today):\n1) Bhavcopies: NSE F&O zip, BSE F&O csv, ind_close csv -> data/raw/<date>/\n"
@@ -124,7 +125,7 @@ class Daemon(object):
         return "Holiday %s added." % day
 
     def request_recover(self):
-        if self.store.kv_get(self._k("recovered")) or self.engine is not None:
+        if self.store.kv_get(self._k("recovered")) or self.engine is not None or self.store.kv_get(self._k("engine_ran")):
             n = self._simulate_missed()
             return "Day already recovered/running. Simulated %d would-have trade(s). Today's summary shows them (late-sim)." % n
         self.recover_requested = True
@@ -152,6 +153,11 @@ class Daemon(object):
             self.heartbeat()
         if self.login is not None:
             self.login.pump()
+        if now.time() >= T(10, 0):
+            extra = os.path.join(self.cfg.state, "reminders.txt") if self.cfg else None
+            for i, text in enumerate(reminders.due(self.day, extra)):
+                if self._once("reminder-%d" % i):
+                    self._say("info", "REMINDER: " + text)
         if now.weekday() >= 5:
             return
         t = now.time()
@@ -181,7 +187,7 @@ class Daemon(object):
             self._summary(now)
         if t >= REMIND and self._once("capture-reminder"):
             self._say("info", CAPTURE_TEXT)
-        if t >= REMIND and self.feed is not None and getattr(self.feed, "needs_restart", False):
+        if t >= REMIND and self.store.kv_get(self._k("summary")) and self.feed is not None and getattr(self.feed, "needs_restart", False):
             self.request_restart()      # Twisted reactor cannot restart: fresh process for the next session
 
     def _new_day(self, day):
@@ -251,6 +257,8 @@ class Daemon(object):
         """After the close (or on /recover): a login exists but no engine ran today -> pull the whole day's bars from history."""
         if self.provider is None or self.login is None or self.store.kv_get(self._k("recovered")):
             return
+        if self.store.kv_get(self._k("engine_ran")) and not self.recover_requested:
+            return                      # a normal session ran today (e.g. restarted after the close): nothing to recover
         if not self.recover_requested and not (self.login.logged_in_today() and self.engine is None):
             return
         if self.last_recover_try is not None and (now - self.last_recover_try).total_seconds() < MORNING_RETRY_S:
@@ -273,7 +281,7 @@ class Daemon(object):
         self.state.trading_blocked = self.state.trading_blocked or "recovery run"
         self.mute = True
         try:
-            n = self._setup(plan, start_feed=False)
+            n = self._setup(plan, start_feed=False, recovery=True)
             if self.engine is not None and self.pipe is not None:
                 self.pipe.flush()
                 self.engine.end_of_day()
@@ -321,9 +329,11 @@ class Daemon(object):
         if not self.mute:
             self.notify(kind, payload)
 
-    def _setup(self, plan, start_feed=True):
+    def _setup(self, plan, start_feed=True, recovery=False):
         """Build engine + pipeline from a morning plan, back-fill, start the feed. Returns bars back-filled."""
         data_only = bool(self.state.trading_blocked)
+        if not recovery:
+            self.store.kv_set(self._k("engine_ran"), "1")
         eng = Engine(self.store, self.broker, self.day, mode="live" if self.state.live_active() else "paper",
                      notify=self._engine_notify, guard=RiskGuard(self.store, self.state))
         if data_only:

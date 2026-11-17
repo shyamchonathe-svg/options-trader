@@ -145,7 +145,7 @@ class Flow(unittest.TestCase):
     def test_no_login_all_day_then_recover_after_close(self):
         bars = [("NIFTY_index", 0, 22500.0, 22510.0, 22490.0, 22505.0), ("NIFTY_22500CE", 0, 100.0, 101.0, 99.0, 100.5)]
         st, state, tr, d, prov, clk = rig(tiny_plan(backfill=bars))
-        for t in (at(9, 17), at(15, 32), at(15, 46)):
+        for t in (at(9, 17), at(15, 32), at(16, 1)):
             step(d, clk, t)
         self.assertTrue(any("No login today" in x for x in texts(tr)))
         self.assertIsNone(d.engine)
@@ -201,7 +201,10 @@ class Sim(unittest.TestCase):
         self.assertEqual((t["exit_reason"], t["exit_px"], t["r_mult"], t["entry_t"], t["exit_t"]), ("target", 130.0, 3.0, "09:40", "09:45"))
         self.assertEqual(st.trades_for_day("2026-11-17"), [])
         from trader.notify import day_summary
-        self.assertIn("late-sim X in 09:40 100.00 -> 09:45 130.00 target R +3.00 (hold 5 min)", day_summary(st, "2026-11-17"))
+        txt = day_summary(st, "2026-11-17")
+        self.assertIn("[late-sim, not a real trade] X", txt)
+        self.assertIn("entry 09:40 @ 100.00  stop 90.00  target 130.00  exit 09:45 @ 130.00 (target)  R +3.00 held 5 min", txt)
+        self.assertIn("ran up to +3.1R", txt)
 
 
 class Hol(unittest.TestCase):
@@ -211,6 +214,35 @@ class Hol(unittest.TestCase):
         for t in (h.replace(hour=8, minute=30), h.replace(hour=9, minute=17)):
             d.step(t)
         self.assertEqual(tr.sent, [])
+
+
+
+class Misc(unittest.TestCase):
+    def test_reminders_once(self):
+        st, state, tr, d, prov, clk = rig()
+        day = D(2026, 12, 18)
+        d.step(day.replace(hour=9, minute=0)); self.assertFalse(any("REMINDER" in x for x in texts(tr)))
+        d.step(day.replace(hour=10, minute=1)); d.step(day.replace(hour=10, minute=2))
+        self.assertEqual(len([x for x in texts(tr) if "REMINDER" in x and "Kite Connect renewal" in x]), 1)
+
+    def test_no_bogus_recovery_after_restart_post_close(self):
+        st, state, tr, d, prov, clk = rig()
+        clk.t = at(9, 3)
+        d.login.handle({"status": "success", "request_token": "t", "state": state_of(d.login.link())})
+        step(d, clk, at(9, 4))                                      # normal session started
+        from trader.daemon import Daemon
+        from trader.state import RuntimeState
+        d2 = Daemon(st, RuntimeState(st, version="t"), d.notify, prov, d.broker, cfg=d.cfg)
+        d2.login = LoginManager(st, prov, d.notify, clk)
+        clk.t = at(15, 55); d2.step(clk.t)                          # process restarted after the close
+        self.assertFalse(any("Recovered" in x for x in texts(tr)))
+
+    def test_no_trade_report(self):
+        st, state, tr, d, prov, clk = rig()
+        from trader.notify import day_summary
+        st.add_signal("2026-11-17", "X", 4, "CE", "rejected", "not-ATM", rules_version="v", gap=0, dist=3)
+        txt = day_summary(st, "2026-11-17")
+        self.assertIn("NO TRADE today", txt); self.assertIn("not-ATM 1", txt)
 
 
 if __name__ == "__main__":
