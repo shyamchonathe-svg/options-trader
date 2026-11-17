@@ -2,6 +2,11 @@
 from trader import rules_v3 as R
 
 
+def _minutes(hhmm):
+    h, m = hhmm.split(":")
+    return int(h) * 60 + int(m)
+
+
 def day_summary(store, day):
     sigs = store.signals_for_day(day)
     trs = store.trades_for_day(day)
@@ -9,13 +14,18 @@ def day_summary(store, day):
     wins = len([t for t in closed if (t["r_mult"] or 0) > 0])
     r = sum(t["r_mult"] or 0.0 for t in closed)
     rej = len([s for s in sigs if s["status"] == "rejected"])
-    lines = ["Summary %s: %d signals (%d rejected), %d trades, %d closed (%d win / %d loss), R %+.2f" % (
-        day, len(sigs), rej, len(trs), len(closed), wins, len(closed) - wins, r)]
+    real = len([s for s in sigs if s["status"] in ("traded", "missed")])
+    lines = ["Summary %s: %d signals, %d trades, %d closed (%d win / %d loss), R %+.2f  [%d pattern matches checked, %d rejected]" % (
+        day, real, len(trs), len(closed), wins, len(closed) - wins, r, len(sigs), rej)]
     for t in trs:
         lines.append("  %s %s in %.2f -> %s R %s" % (
             t["symbol"], t["entry_t"], t["entry_px"],
             "open" if t["exit_t"] is None else "%.2f %s" % (t["exit_px"], t["exit_reason"]),
             "n/a" if t["r_mult"] is None else "%+.2f" % t["r_mult"]))
+    for t in store.sim_trades_for_day(day):
+        lines.append("  late-sim %s in %s %.2f -> %s %.2f %s R %+.2f (hold %s min)" % (
+            t["symbol"], t["entry_t"], t["entry_px"], t["exit_t"], t["exit_px"], t["exit_reason"], t["r_mult"],
+            _minutes(t["exit_t"]) - _minutes(t["entry_t"])))
     return "\n".join(lines)
 
 
@@ -25,7 +35,7 @@ def format_event(kind, p):
             return None
         if p["status"] == "rejected" and p.get("reasons") == "not-ATM":
             return None             # by-design noise: stays in the database and the exports, not on Telegram
-        tag = {"traded": "SIGNAL", "missed": "signal MISSED"}.get(p["status"], "signal rejected")
+        tag = {"traded": "SIGNAL", "missed": "SIGNAL MISSED"}.get(p["status"], "pattern rejected")
         return "%s %s at %s%s" % (tag, p["symbol"], p["t"], (" (%s)" % p["reasons"]) if p["reasons"] else "")
     if kind == "entry":
         return "ENTRY %s qty %s @ %.2f  stop %.2f  target %.2f  (%s)" % (p["symbol"], p["qty"], p["price"], p["stop"], p["target"], p["t"])

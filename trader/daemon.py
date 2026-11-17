@@ -124,6 +124,9 @@ class Daemon(object):
         return "Holiday %s added." % day
 
     def request_recover(self):
+        if self.store.kv_get(self._k("recovered")) or self.engine is not None:
+            n = self._simulate_missed()
+            return "Day already recovered/running. Simulated %d would-have trade(s). Today's summary shows them (late-sim)." % n
         self.recover_requested = True
         return "Recovery requested: the day's bars will be pulled from history within 30 s (needs a login today)."
 
@@ -222,6 +225,28 @@ class Daemon(object):
             self._say("info", "No login by %s: TODAY IS DATA_ONLY (no trading). Log in any time before midnight and the day's data "
                               "is still collected.\n%s" % (cut.strftime("%H:%M"), self.login_link()))
 
+    def _simulate_missed(self):
+        """Late-login days: rebuild each would-have trade from the stored 5-min bars with the SAME research exit rule
+        (stop / 3R target on wick touch, time exit after 12 bars). Stored as mode 'late-sim', never mixed into real stats.
+        Idempotent. Returns the number of simulated trades."""
+        n = 0
+        for sg in self.store.signals_for_day(self.day):
+            if sg["status"] != "missed" or sg["reasons"] != "late_login" or sg["entry"] is None:
+                continue
+            sid = self.store.signal_id(self.day, sg["symbol"], sg["slot"])
+            if self.store.trade_for_signal(sid) is not None:
+                continue
+            by = {}
+            for src in ("backfill", "live"):             # live bars win where both exist
+                for b in self.store.get_bars(self.day, sg["symbol"], src):
+                    by[b["slot"]] = {"O": b["o"], "H": b["h"], "L": b["l"], "C": b["c"]}
+            r, j, why = R.simulate_exit(by, sg["slot"], sg["entry"], sg["stop"])
+            px = {"stop": sg["stop"], "target": sg["target"]}.get(why, by[j]["C"] if j in by else sg["entry"])
+            tid, _ = self.store.add_trade(sid, "late-sim", 0, R.tstr(sg["slot"] + 1), sg["entry"])
+            self.store.close_trade(tid, R.tstr(j + 1 if why == "time" else j), px, why, r)
+            n += 1
+        return n
+
     def _recover(self, now):
         """After the close (or on /recover): a login exists but no engine ran today -> pull the whole day's bars from history."""
         if self.provider is None or self.login is None or self.store.kv_get(self._k("recovered")):
@@ -255,9 +280,14 @@ class Daemon(object):
         finally:
             self.mute = False
         self.state.token_ok = True
+        self._simulate_missed()
         self.store.kv_set(self._k("recovered"), "1")
         sigs = [x for x in self.store.signals_for_day(self.day) if x["reasons"] == "late_login"]
-        lines = ["  %s at %s" % (x["symbol"], R.tstr(x["slot"])) for x in sigs]
+        lines = []
+        for x in sigs:
+            tr = self.store.trade_for_signal(self.store.signal_id(self.day, x["symbol"], x["slot"]))
+            lines.append("  %s %s: %s" % (x["symbol"], R.tstr(x["slot"]), "entry %.2f -> %s %.2f, %s, R %+.2f" % (
+                tr["entry_px"], tr["exit_t"], tr["exit_px"], tr["exit_reason"], tr["r_mult"]) if tr else "no simulation (bars missing)"))
         self._say("info", "Recovered %d bars for %s from history (DATA_ONLY, nothing traded). The rules ran on the whole day: "
                           "%d signal(s) would have fired%s" % (n, self.day, len(sigs), (":\n" + "\n".join(lines)) if lines else "."))
 
@@ -387,6 +417,7 @@ class Daemon(object):
                 self.store.event("ERROR", "feed", "stop: %r" % e)
 
     def _summary(self, now):
+        self._simulate_missed()
         text = day_summary(self.store, self.day)
         if self.state.trading_blocked:
             late = len([x for x in self.store.signals_for_day(self.day) if x["reasons"] == "late_login"])

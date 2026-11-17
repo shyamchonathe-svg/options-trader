@@ -155,6 +155,7 @@ class Flow(unittest.TestCase):
         self.assertTrue(any("Recovered" in x for x in texts(tr)))
         self.assertFalse(any(x.startswith("signal") for x in texts(tr)))     # no per-signal flood during recovery
         self.assertTrue(state.token_ok)
+        self.assertEqual(len(st.trades_for_day("2026-11-17")), 0)         # sims never mix into real trades
         self.assertEqual(st.trades_for_day("2026-11-17"), [])
         n = len(tr.sent)
         step(d, clk, at(16, 32)); step(d, clk, at(16, 40))
@@ -184,6 +185,23 @@ class Flow(unittest.TestCase):
         state.live_enabled = True; state.mode = "live"
         return c.cmd_arm(["live"], at(9, 20))
 
+
+
+class Sim(unittest.TestCase):
+    def test_late_sim_trade(self):
+        st, state, tr, d, prov, clk = rig()
+        sid, _ = st.add_signal("2026-11-17", "X", 4, "CE", "missed", "late_login", entry=100.0, stop=90.0, target=130.0,
+                               rules_version="v", gap=0, dist=0)
+        for slot, (o, h, l, c) in {5: (100, 105, 95, 104), 6: (104, 131, 103, 128)}.items():
+            st.put_bar("2026-11-17", "X", slot, o, h, l, c, 0, "backfill")
+        d.day = "2026-11-17"
+        self.assertEqual(d._simulate_missed(), 1)
+        self.assertEqual(d._simulate_missed(), 0)                          # idempotent
+        t = st.sim_trades_for_day("2026-11-17")[0]
+        self.assertEqual((t["exit_reason"], t["exit_px"], t["r_mult"], t["entry_t"], t["exit_t"]), ("target", 130.0, 3.0, "09:40", "09:45"))
+        self.assertEqual(st.trades_for_day("2026-11-17"), [])
+        from trader.notify import day_summary
+        self.assertIn("late-sim X in 09:40 100.00 -> 09:45 130.00 target R +3.00 (hold 5 min)", day_summary(st, "2026-11-17"))
 
 
 class Hol(unittest.TestCase):

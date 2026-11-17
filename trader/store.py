@@ -82,7 +82,13 @@ class Store(object):
 
     def trades_for_day(self, day):
         q = ("SELECT t.*, s.symbol, s.slot, s.entry, s.stop, s.target FROM trades t JOIN signals s ON s.id=t.signal_id "
-             "WHERE s.day=? ORDER BY s.slot, s.symbol")
+             "WHERE s.day=? AND t.mode != 'late-sim' ORDER BY s.slot, s.symbol")
+        return [dict(r) for r in self.db.execute(q, (day,))]
+
+    def sim_trades_for_day(self, day):
+        """Would-have trades on late-login days, rebuilt from bars. Never mixed into the real trade statistics."""
+        q = ("SELECT t.*, s.symbol, s.slot, s.entry, s.stop, s.target FROM trades t JOIN signals s ON s.id=t.signal_id "
+             "WHERE s.day=? AND t.mode = 'late-sim' ORDER BY s.slot, s.symbol")
         return [dict(r) for r in self.db.execute(q, (day,))]
 
     def open_trades(self):
