@@ -28,13 +28,24 @@ class TelegramAPI(object):
         return j["result"]
 
     def get_updates(self, offset=None, timeout=25):
-        p = {"timeout": timeout, "allowed_updates": '["message"]'}
+        p = {"timeout": timeout, "allowed_updates": '["message","callback_query"]'}
         if offset is not None:
             p["offset"] = offset
         return self._call("getUpdates", p, timeout=timeout + 10)
 
-    def send_message(self, chat_id, text):
-        return self._call("sendMessage", {"chat_id": chat_id, "text": text[:4000]})
+    def send_message(self, chat_id, text, markup=None):
+        p = {"chat_id": chat_id, "text": text[:4000]}
+        if markup:
+            import json
+            p["reply_markup"] = json.dumps(markup)
+        return self._call("sendMessage", p)
+
+    def answer_callback(self, callback_id, text=""):
+        return self._call("answerCallbackQuery", {"callback_query_id": callback_id, "text": text[:100]})
+
+    def set_commands(self, commands):
+        import json
+        return self._call("setMyCommands", {"commands": json.dumps([{"command": c, "description": d} for c, d in commands])})
 
     def send_document(self, chat_id, path, caption=""):
         with open(path, "rb") as f:

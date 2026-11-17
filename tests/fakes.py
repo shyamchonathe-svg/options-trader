@@ -2,10 +2,18 @@ class FakeTransport(object):
     def __init__(self):
         self.sent, self.deleted, self.updates, self.fail = [], [], [], False
 
-    def send_message(self, chat_id, text):
+    def send_message(self, chat_id, text, markup=None):
         if self.fail:
             raise RuntimeError("net down")
         self.sent.append((chat_id, text))
+        self.markups = getattr(self, "markups", [])
+        self.markups.append(markup)
+
+    def answer_callback(self, cid, text=""):
+        self.answered = getattr(self, "answered", []) + [cid]
+
+    def set_commands(self, commands):
+        self.commands = commands
 
     def delete_message(self, chat_id, mid):
         self.deleted.append((chat_id, mid))

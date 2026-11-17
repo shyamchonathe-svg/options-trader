@@ -25,7 +25,7 @@ Login: /login (one-tap link)  /token <request_token or URL> (fallback)  /recover
 Days: /skip  /unskip  /holiday YYYY-MM-DD""" % ", ".join(sorted(RISK_BOUNDS))
 
 COMMANDS = ("help start status health positions signals why trades summary compare risk bars config logs replay export "
-            "pause resume stop flat restart note ack set mode arm disarm token yes login skip unskip holiday recover").split()
+            "menu pause resume stop flat restart note ack set mode arm disarm token yes login skip unskip holiday recover").split()
 
 
 def _fmt_r(x):
@@ -96,6 +96,9 @@ class Controller(object):
         return HELP
 
     cmd_start = cmd_help
+
+    def cmd_menu(self, args, now):
+        return "Tap a button, or type /help for every command."
 
     def cmd_status(self, args, now):
         st, day = self.state, now.strftime("%Y-%m-%d")

@@ -68,6 +68,11 @@ def run(cfg, transport, provider=None, max_loops=None, sleep=time.sleep, clock=i
             server.start()
         except OSError as e:
             store.event("ERROR", "login", "receiver not started: %s (use /token as fallback)" % e)
+    try:
+        from trader.bot import COMMAND_LIST
+        transport.set_commands(COMMAND_LIST)
+    except Exception:
+        pass
     notifier.send("Trader %s started. mode=%s%s, risk %s. /help" % (
         state.version, state.mode, " (live ENABLED in config)" if state.live_enabled else "", state.risk))
     try:

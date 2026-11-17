@@ -80,3 +80,35 @@ class Vix(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ButtonUI(unittest.TestCase):
+    def test_buttons_run_readonly_only_and_menu_shown(self):
+        from trader import bot as B
+        from tests.fakes import FakeTransport
+        calls = []
+
+        class C(object):
+            def is_sensitive(self, t):
+                return False
+
+            def handle(self, chat, text):
+                calls.append(text)
+                return ["ok " + text]
+        class St(object):
+            d = {}
+            def kv_get(self, k): return self.d.get(k)
+            def kv_set(self, k, v): self.d[k] = v
+        t = FakeTransport()
+        b = B.Bot(t, C(), St())
+        t.updates = [
+            {"update_id": 1, "callback_query": {"id": "a", "data": "c:status", "message": {"chat": {"id": 5}}}},
+            {"update_id": 2, "callback_query": {"id": "b", "data": "c:stop", "message": {"chat": {"id": 5}}}},
+            {"update_id": 3, "callback_query": {"id": "c", "data": "c:flat", "message": {"chat": {"id": 5}}}},
+        ]
+        b.poll_once()
+        self.assertEqual(calls, ["/status"])
+        self.assertIsNotNone(t.markups[-1])
+        self.assertEqual(len(t.answered), 3)
+        flat = [x["callback_data"] for row in B.keyboard()["inline_keyboard"] for x in row]
+        self.assertFalse(any(c in ("c:stop", "c:flat", "c:arm", "c:mode", "c:set", "c:restart") for c in flat))
