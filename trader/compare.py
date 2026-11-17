@@ -10,11 +10,10 @@ END_SLOT = 69
 # name, dict(rr, hold, be, trail_n, arm)
 VARIANTS = [
     ("A  v3 now: 3R target, 12 bars",                 dict(rr=3.0, hold=12)),
-    ("B  3R target, 24 bars",                         dict(rr=3.0, hold=24)),
-    ("C  stop to entry after +1R, 3R, 12 bars",       dict(rr=3.0, hold=12, be=1.0)),
-    ("D  trail 3-bar low after +1R, no target, 12 bars", dict(rr=None, hold=12, trail=3, arm=1.0)),
-    ("E  trail 3-bar low after +1R, no target, to 15:00", dict(rr=None, hold=None, trail=3, arm=1.0)),
-    ("F  trail 5-bar low after +1R, no target, to 15:00", dict(rr=None, hold=None, trail=5, arm=1.0)),
+    ("B  stop to entry after +2R, 3R, 12 bars",       dict(rr=3.0, hold=12, be=2.0)),
+    ("C  trail 3-bar low after +1R, no target, 12 bars", dict(rr=None, hold=12, trail=3, arm=1.0)),
+    ("D  trail 3-bar low after +1R, no target, to 15:00", dict(rr=None, hold=None, trail=3, arm=1.0)),
+    ("E  trail 5-bar low after +1R, no target, to 15:00", dict(rr=None, hold=None, trail=5, arm=1.0)),
 ]
 
 
