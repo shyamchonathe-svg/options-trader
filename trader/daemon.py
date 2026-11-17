@@ -181,6 +181,7 @@ class Daemon(object):
             self.pipe.close_due(now)
             self._watch_feed(now)
         self._health(now)
+        self._vix(now, t)
         if t >= EOD and self._once("eod"):
             self._end_of_day()
         if t >= SUMMARY and self._once("summary"):
@@ -230,6 +231,22 @@ class Daemon(object):
         elif self._once("cutoff-passed"):
             self._say("info", "No login by %s: TODAY IS DATA_ONLY (no trading). Log in any time before midnight and the day's data "
                               "is still collected.\n%s" % (cut.strftime("%H:%M"), self.login_link()))
+
+    def _vix(self, now, t):
+        """Data only: India VIX every 5 minutes into bars(src='vix'). Never touches the rules; failures are logged, not fatal."""
+        if self.engine is None or self.provider is None or not hasattr(self.provider, "vix") or not (T(9, 15) <= t < EOD):
+            return
+        slot = (t.hour * 60 + t.minute - (9 * 60 + 15)) // 5
+        if self.store.kv_get(self._k("vix-slot")) == str(slot):
+            return
+        self.store.kv_set(self._k("vix-slot"), str(slot))
+        try:
+            px = self.provider.vix()
+            if px:
+                self.store.put_bar(self.day, "INDIA VIX", slot, px, px, px, px, 0, "vix")
+        except Exception as e:
+            if self._once("vix-fail"):
+                self.store.event("WARN", "vix", "unavailable: %s" % type(e).__name__)
 
     def _simulate_missed(self):
         """Late-login days: rebuild each would-have trade from the stored 5-min bars with the SAME research exit rule
@@ -436,7 +453,14 @@ class Daemon(object):
                 text += "\nNo login today: no data was collected. Log in before midnight (/login) to recover the day's bars."
         if self.provider is None:
             text += "\n(no market-data provider configured)"
+        vb = self.store.get_bars(self.day, "INDIA VIX", "vix")
+        if vb:
+            text += "\nIndia VIX (data only): open %.2f, close %.2f, high %.2f, low %.2f." % (
+                vb[0]["c"], vb[-1]["c"], max(b["c"] for b in vb), min(b["c"] for b in vb))
         self._say("summary", text)
+        if datetime.datetime.strptime(self.day, "%Y-%m-%d").weekday() == 4:
+            from trader.compare import compare
+            self._say("info", compare(self.store))
         if self.pipe is not None and self.provider is not None:
             try:
                 hist = self.provider.history(self.day, sorted(self.pipe.bb))

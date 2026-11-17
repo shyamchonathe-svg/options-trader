@@ -17,14 +17,14 @@ CONFIRM_TTL = 120
 MAX_PIN_FAILS = 3
 
 HELP = """Read-only: /status /health /positions /signals [day] /why HH:MM [symbol] /trades [day] /summary [day]
-/risk /bars <symbol> /config /logs [n] /replay /export
+/compare /risk /bars <symbol> /config /logs [n] /replay /export
 Control: /pause /resume /stop /flat /restart /note <text> /ack
 Risk: /set <key> <value>   keys: %s
 Live (needs code+PIN): /mode shadow|live /arm live /disarm   confirm with: /yes <code> [PIN]
 Login: /login (one-tap link)  /token <request_token or URL> (fallback)  /recover
 Days: /skip  /unskip  /holiday YYYY-MM-DD""" % ", ".join(sorted(RISK_BOUNDS))
 
-COMMANDS = ("help start status health positions signals why trades summary risk bars config logs replay export "
+COMMANDS = ("help start status health positions signals why trades summary compare risk bars config logs replay export "
             "pause resume stop flat restart note ack set mode arm disarm token yes login skip unskip holiday recover").split()
 
 
@@ -164,6 +164,10 @@ class Controller(object):
     def cmd_summary(self, args, now):
         from trader.notify import day_summary
         return day_summary(self.store, self._day(args, now))
+
+    def cmd_compare(self, args, now):
+        from trader.compare import compare
+        return compare(self.store)
 
     def cmd_risk(self, args, now):
         day = now.strftime("%Y-%m-%d")

@@ -263,6 +263,14 @@ class KiteProvider(object):
         except Exception as e:
             return "kite login url unavailable: %r" % e
 
+    def vix(self):
+        """India VIX last price (data only, never used by the rules). None if unavailable."""
+        k = self.kite()
+        k.set_access_token(self._load_token()["access_token"])
+        q = k.quote(["NSE:INDIA VIX"]).get("NSE:INDIA VIX") or {}
+        px = q.get("last_price")
+        return float(px) if px else None
+
     # ---------------------------------------------------------------- morning
     def morning(self, day):
         now = self.clock()
