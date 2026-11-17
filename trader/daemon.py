@@ -29,7 +29,7 @@ REMIND = T(15, 50)
 CAPTURE_TEXT = ("Daily capture (send today):\n1) Bhavcopies: NSE F&O zip, BSE F&O csv, ind_close csv -> data/raw/<date>/\n"
                 "2) 5m charts, clean + EMA10/20: Nifty, Sensex, India VIX, ATM and +/-1 strike CE and PE of both indices\n"
                 "3) Daily charts (Nifty, Sensex) only when asked. Tradebook only on real-money days.")
-LOGIN_PROMPTS = (T(8, 30), T(8, 50), T(9, 5), T(9, 12))
+LOGIN_PROMPTS = (T(8, 30), T(8, 40), T(8, 50), T(9, 5), T(9, 12))
 DEFAULT_CUTOFF = "09:15"
 STALE_S = 90
 MORNING_RETRY_S = 30
@@ -100,6 +100,9 @@ class Daemon(object):
         return os.path.join(self.cfg.state, "holidays.txt") if self.cfg else None
 
     def is_holiday(self, day):
+        from trader.holidays import NSE_HOLIDAYS
+        if day in NSE_HOLIDAYS:
+            return True
         p = self.holidays_path()
         if p and os.path.exists(p):
             with open(p) as f:

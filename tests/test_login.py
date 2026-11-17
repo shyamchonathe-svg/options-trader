@@ -112,9 +112,9 @@ class Flow(unittest.TestCase):
 
     def test_late_login_is_data_only(self):
         st, state, tr, d, prov, clk = rig()
-        for t in (at(8, 30), at(8, 50), at(9, 5), at(9, 12), at(9, 16), at(9, 17)):
+        for t in (at(8, 30), at(8, 40), at(8, 50), at(9, 5), at(9, 12), at(9, 16), at(9, 17)):
             step(d, clk, t)
-        self.assertEqual(len([x for x in texts(tr) if "login needed" in x]), 4)
+        self.assertEqual(len([x for x in texts(tr) if "login needed" in x]), 5)
         self.assertEqual(len([x for x in texts(tr) if "DATA_ONLY" in x]), 1)
         self.assertIsNone(d.engine)
         clk.t = at(11, 0)
@@ -181,6 +181,16 @@ class Flow(unittest.TestCase):
         c = Controller(st, state, "1", None, hooks={}, clock=lambda: at(9, 20))
         state.live_enabled = True; state.mode = "live"
         return c.cmd_arm(["live"], at(9, 20))
+
+
+
+class Hol(unittest.TestCase):
+    def test_builtin_holiday(self):
+        st, state, tr, d, prov, clk = rig()
+        h = D(2026, 11, 24)
+        for t in (h.replace(hour=8, minute=30), h.replace(hour=9, minute=17)):
+            d.step(t)
+        self.assertEqual(tr.sent, [])
 
 
 if __name__ == "__main__":
