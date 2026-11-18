@@ -94,7 +94,7 @@ INSIDE = {
 }
 
 
-def _inside(by, k, big, need_green, side_for_index=None):
+def _inside(by, k, big, need_green, side_for_index=None, small=0.6):
     """Candle k is a big candle and candle k+1 sits inside it.  need_green: option (True) / index uses the side."""
     if k not in by or k + 1 not in by: return False
     a, c = by[k], by[k + 1]
@@ -109,7 +109,7 @@ def _inside(by, k, big, need_green, side_for_index=None):
     if rng < big * _avg_range(by, k): return False
     tol = 0.05 * rng
     if c["H"] > a["H"] + tol or c["L"] < a["L"] - tol: return False
-    return (c["H"] - c["L"]) <= 0.6 * rng
+    return (c["H"] - c["L"]) <= small * rng
 
 
 def inside_signal(k, by, e10, e20, ix, ie10, ie20, side, p, rr=3.0):
@@ -117,12 +117,12 @@ def inside_signal(k, by, e10, e20, ix, ie10, ie20, side, p, rr=3.0):
     i = k + 1
     if k < 3 or k + 2 not in by or i not in ix or k not in ix: return None
     if R.minute_of(i) > R.LAST_ENTRY_MIN: return None
-    if not _inside(by, k, p["big"], True): return None
+    if not _inside(by, k, p["big"], True, None, p.get("small", 0.6)): return None
     if by[k]["C"] < e20[k]: return None
     if R.index_direction(ix[i]["C"], ie10[i], ie20[i]) != side: return None
     age, _ = trend_age(ix, ie10, ie20, k, side)
     if R.index_direction(ix[k]["C"], ie10[k], ie20[k]) == side and age > p["fresh"]: return None
-    if p["index"] and not _inside(ix, k, p["ibig"], False, side): return None
+    if p["index"] and not _inside(ix, k, p["ibig"], False, side, p.get("small", 0.6)): return None
     trig = by[i]["H"]
     nxt = by[k + 2]
     if nxt["H"] < trig: return None                      # never triggered
@@ -132,14 +132,42 @@ def inside_signal(k, by, e10, e20, ix, ie10, ie20, side, p, rr=3.0):
     return dict(i=i, entry=entry, stop=stop)
 
 
+# ---------------------------------------------------------------- parameter grids (broad search; rank on research days, verify on live days)
+def hammer_grid():
+    g = {}
+    for body in (.15, .30):
+        for clv in (.60, .65, .75):
+            for lw in (.15, .25, .40):
+                for touch in (2, 3, 6):
+                    for size in (0, 1.0):
+                        n = "g-ham body%d clv%d wick%d touch%d size%s" % (body * 100, clv * 100, lw * 100, touch, "on" if size else "off")
+                        g[n] = dict(body=body, clv=clv, lw=lw, red=2, touch=touch, tol=1.003, size=size)
+    return g
+
+
+def inside_grid():
+    g = {}
+    for big in (1.2, 1.5, 2.0):
+        for small in (0.4, 0.6, 0.8):
+            for fresh in (3, 6, 12, 999):
+                for index in (False, True):
+                    for stop in ("inside", "big"):
+                        n = "g-ins big%.1f small%.1f fresh%s %s stop-%s" % (big, small, fresh if fresh < 999 else "any",
+                                                                          "opt+idx" if index else "opt", stop)
+                        g[n] = dict(index=index, fresh=fresh, stop=stop, big=big, ibig=1.0 if index else 0, small=small)
+    return g
+
+
 # ---------------------------------------------------------------- driver
-def run_case(case, rr=3.0):
+def run_case(case, rr=3.0, hammers=None, insides=None):
     """case: dict(day, index, step, prev_close, ix=(by,e10,e20), opts={name:(by,e10,e20,strike,side)}).
     Returns list of result rows (one per signal) for every setup."""
     ix, ie10, ie20 = case["ix"]
     first = min(k for k in ix if k >= 0)
     gap, gside = R.gap_side(ix[first]["O"], case["prev_close"])
     rows = []
+    hammers = HAMMERS if hammers is None else hammers
+    insides = INSIDE if insides is None else insides
 
     def finish(setup, name, strike, side, by, e10, e20, sg):
         i = sg["i"]
@@ -154,7 +182,7 @@ def run_case(case, rr=3.0):
         return c
 
     for name, (by, e10, e20, strike, side) in case["opts"].items():
-        for setup, p in HAMMERS.items():
+        for setup, p in hammers.items():
             busy = -1
             for i in range(3, 68):
                 if i <= busy or i not in by or i not in ix: continue
@@ -164,7 +192,7 @@ def run_case(case, rr=3.0):
                 r = finish(setup, name, strike, side, by, e10, e20, sg)
                 busy = i + 1
                 if r: rows.append(r)
-        for setup, p in INSIDE.items():
+        for setup, p in insides.items():
             busy = -1
             for k in range(3, 66):
                 if k + 1 <= busy: continue

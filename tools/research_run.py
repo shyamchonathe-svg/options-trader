@@ -43,24 +43,71 @@ def db_cases(path):
                            ix=(s.by, s.e10, s.e20), opts=opts, src="live")
 
 
-def main(dbs):
+def stats(x):
+    if not x: return (0, 0.0, 0.0, 0.0)
+    w = sum(1 for r in x if r["why"] == "target"); t = sum(r["R"] for r in x)
+    return (len(x), 100.0 * w / len(x), t / len(x), t)
+
+
+def ranking(rows, title, minn=8, top=15):
+    """Rank every grid setup on the RESEARCH days (screenshot data), then show how the same setup did on LIVE days."""
+    by = {}
+    for r in rows: by.setdefault(r["setup"], []).append(r)
+    cand = []
+    for name, x in by.items():
+        rs = [r for r in x if r["src"] == "research"]; lv = [r for r in x if r["src"] == "live"]
+        sr, sl = stats(rs), stats(lv)
+        if sr[0] >= minn: cand.append((sr[2], name, sr, sl))
+    cand.sort(reverse=True)
+    out = [title, "(ranked on research days, n>=%d; the LIVE columns are the real test - a setup counts only if it also holds there)" % minn,
+           "%-52s | %4s %5s %6s | %4s %5s %6s" % ("setup", "n", "win%", "avgR", "n", "win%", "avgR")]
+    for _, name, sr, sl in cand[:top]:
+        out.append("%-52s | %4d %4.0f%% %6.2f | %4d %4.0f%% %6.2f" % (name, sr[0], sr[1], sr[2], sl[0], sl[1], sl[2]))
+    out.append("(%d of %d setups had enough signals; with this many formulas a few will look good by luck)" % (len(cand), len(by)))
+    return "\n".join(out)
+
+
+def main(argv):
+    args = list(argv); out_dir = "."; grid = False; dbs = []
+    while args:
+        a = args.pop(0)
+        if a == "--out": out_dir = args.pop(0)
+        elif a == "--grid": grid = True
+        else: dbs.append(a)
+    hammers, insides = dict(RS.HAMMERS), dict(RS.INSIDE)
+    if grid:
+        hammers.update(RS.hammer_grid()); insides.update(RS.inside_grid())
     rows = []
     for c in fixture_cases():
-        for r in RS.run_case(c): r["src"] = "research"; rows.append(r)
+        for r in RS.run_case(c, hammers=hammers, insides=insides): r["src"] = "research"; rows.append(r)
     for p in dbs:
         for c in db_cases(p):
-            for r in RS.run_case(c): r["src"] = "live"; rows.append(r)
-    print("SHADOW RESEARCH - nothing here was traded. Same 3R / 12-candle exit for every setup, ATM + gap filters applied,")
-    print("every signal counted per option (no one-trade-per-day cap), so n is bigger than the real trade count.")
-    print("Signals inside the 10:35-13:00 window ARE included here (v3 skips them); see the 'midday' split.\n")
-    print(RS.summarize(rows, "ALL SIGNALS"))
-    print("\n" + RS.summarize(rows, "OUTSIDE 10:35-13:00 (what v3 could actually take)", lambda r: not r["midday"]))
-    print("\n" + RS.summarize(rows, "INSIDE 10:35-13:00 (blocked in v3)", lambda r: r["midday"]))
-    print("\n" + RS.summarize(rows, "INDEX HAS MOVED LITTLE (<0.20% since the trend began) - early/first leg", lambda r: r["idx_move"] < 0.20))
-    print("\n" + RS.summarize(rows, "INDEX HAS MOVED A LOT (>=0.20%) - later legs", lambda r: r["idx_move"] >= 0.20))
-    print("\n" + RS.summarize(rows, "OPTION ALREADY UP >=50% since its trend began", lambda r: r["opt_move"] >= 50))
-    print("\n" + RS.summarize(rows, "OPTION UP <50%", lambda r: r["opt_move"] < 50))
-    json.dump(rows, open(os.path.join(HERE, "..", "..", "research_rows.json"), "w"))
+            for r in RS.run_case(c, hammers=hammers, insides=insides): r["src"] = "live"; rows.append(r)
+    named = [r for r in rows if not r["setup"].startswith("g-")]
+    ndays = len(set(r["day"] for r in rows if r["src"] == "live"))
+    L = []
+    L.append("SHADOW RESEARCH - nothing here was traded. Same 3R / 12-candle exit for every setup, ATM + gap filters applied,")
+    L.append("every signal counted per option (no one-trade-per-day cap), so n is bigger than the real trade count.")
+    L.append("Signals inside the 10:35-13:00 window ARE included here (v3 skips them); see the 'midday' split.")
+    L.append("Data: research days (screenshot-derived, for discovery) + %d live day(s) (exact candles, for verification).\n" % ndays)
+    L.append(RS.summarize(named, "ALL SIGNALS (both data sets)"))
+    for src in ("research", "live"):
+        if any(r["src"] == src for r in named):
+            L.append("\n" + RS.summarize(named, "ONLY %s DAYS" % src.upper(), lambda r, s=src: r["src"] == s))
+    L.append("\n" + RS.summarize(named, "OUTSIDE 10:35-13:00 (what v3 could actually take)", lambda r: not r["midday"]))
+    L.append("\n" + RS.summarize(named, "INSIDE 10:35-13:00 (blocked in v3)", lambda r: r["midday"]))
+    L.append("\n" + RS.summarize(named, "INDEX HAS MOVED LITTLE (<0.20% since the trend began) - early/first leg", lambda r: r["idx_move"] < 0.20))
+    L.append("\n" + RS.summarize(named, "INDEX HAS MOVED A LOT (>=0.20%) - later legs", lambda r: r["idx_move"] >= 0.20))
+    L.append("\n" + RS.summarize(named, "OPTION ALREADY UP >=50% since its trend began", lambda r: r["opt_move"] >= 50))
+    L.append("\n" + RS.summarize(named, "OPTION UP <50%", lambda r: r["opt_move"] < 50))
+    if grid:
+        gh = [r for r in rows if r["setup"].startswith("g-ham")]; gi = [r for r in rows if r["setup"].startswith("g-ins")]
+        L.append("\n" + ranking(gh, "GRID - HAMMER FORMULAS (top 15)"))
+        L.append("\n" + ranking(gi, "GRID - INSIDE-CANDLE SETUPS (top 15)", minn=4))
+    text = "\n".join(L)
+    print(text)
+    if not os.path.isdir(out_dir): os.makedirs(out_dir)
+    json.dump(rows, open(os.path.join(out_dir, "research_rows.json"), "w"))
 
 
 if __name__ == "__main__":
