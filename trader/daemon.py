@@ -17,7 +17,8 @@ import time
 from trader import rules_v3 as R
 from trader.engine import Engine
 from trader.export import make_export
-from trader.notify import day_summary
+from trader.notify import day_summary, analysis_report
+from trader import present as P
 from trader.pipeline import Pipeline
 from trader import reminders
 from trader.recon import reconcile
@@ -27,10 +28,9 @@ T = datetime.time
 MORNING, READY, STALE_FROM, EOD, SUMMARY = T(9, 0), T(9, 10), T(9, 20), T(15, 31), T(16, 0)
 MARKET_END = T(15, 25)
 REMIND = T(15, 50)
-CAPTURE_TEXT = ("Daily capture (send today):\n1) Bhavcopies: NSE F&O zip, BSE F&O csv, ind_close csv -> data/raw/<date>/\n"
-                "2) 5m charts, clean + EMA10/20: Nifty, Sensex, India VIX, ATM and +/-1 strike CE and PE of both indices\n"
-                "3) Daily charts (Nifty, Sensex) only when asked. Tradebook only on real-money days.")
 LOGIN_PROMPTS = (T(8, 30), T(8, 40), T(8, 50), T(9, 5), T(9, 12))
+DEFAULT_CAPITAL = 100000       # rupees per index; a position may use CAPITAL_USE_PCT of it, in whole lots
+DEFAULT_USE_PCT = 0.9
 DEFAULT_CUTOFF = "09:15"
 STALE_S = 90
 MORNING_RETRY_S = 30
@@ -179,6 +179,7 @@ class Daemon(object):
         self._drain()
         if self.pipe is not None and T(9, 15) <= t < EOD:
             self.pipe.close_due(now)
+            self.pipe.service(now)
             self._watch_feed(now)
         self._health(now)
         self._vix(now, t)
@@ -186,8 +187,6 @@ class Daemon(object):
             self._end_of_day()
         if t >= SUMMARY and self._once("summary"):
             self._summary(now)
-        if t >= REMIND and self._once("capture-reminder"):
-            self._say("info", CAPTURE_TEXT)
         if t >= REMIND and self.store.kv_get(self._k("summary")) and self.feed is not None and getattr(self.feed, "needs_restart", False):
             self.request_restart()      # Twisted reactor cannot restart: fresh process for the next session
 
@@ -198,6 +197,7 @@ class Daemon(object):
             except Exception as e:
                 self.store.event("ERROR", "feed", "stop: %r" % e)
         self.day, self.engine, self.pipe, self.feed = day, None, None, None
+        self.state.setup_done = False
         self.stale_alerted, self.morning_err, self.last_morning_try = False, None, None
         self.state.feed_ok = None
         self.state.trading_blocked = None
@@ -351,8 +351,10 @@ class Daemon(object):
         data_only = bool(self.state.trading_blocked)
         if not recovery:
             self.store.kv_set(self._k("engine_ran"), "1")
+        env = self.cfg.env if self.cfg else {}
         eng = Engine(self.store, self.broker, self.day, mode="live" if self.state.live_active() else "paper",
-                     notify=self._engine_notify, guard=RiskGuard(self.store, self.state))
+                     notify=self._engine_notify, guard=RiskGuard(self.store, self.state),
+                     capital=float(env.get("CAPITAL_PER_INDEX", DEFAULT_CAPITAL)), use_pct=float(env.get("CAPITAL_USE_PCT", DEFAULT_USE_PCT)))
         if data_only:
             eng.accepting, eng.block_reason = False, "late_login"
         syms = []
@@ -361,7 +363,9 @@ class Daemon(object):
             syms.append(spec.symbol)
             syms.extend(o.symbol for o in spec.options)
         self.engine = eng
-        self.pipe = Pipeline(self.store, eng, syms)
+        self.pipe = Pipeline(self.store, eng, syms, fixer=getattr(self.provider, "exact_bar", None),
+                             near=plan.get("near"))
+        self.state.setup_done = True
         back = plan.get("backfill") or []
         if back:
             was_muted, self.mute = self.mute, True
@@ -383,12 +387,13 @@ class Daemon(object):
         return len(back)
 
     def _ready_text(self):
+        live = self.state.live_active()
         if self.provider is None:
-            return "Ready check %s: no market-data provider configured yet (control plane only). mode=%s" % (self.day, self.state.mode)
+            return "Ready check %s: no market-data source is configured yet." % self.day
         if self.engine is None:
-            return "NOT READY %s: %s" % (self.day, self.morning_err or ("token missing" if self.state.token_ok is False else "morning setup pending"))
-        names = ", ".join(sorted(self.pipe.bb))
-        return "READY %s mode=%s feed=%s\nwatching: %s" % (self.day, self.state.mode, "on" if self.feed else "off", names)
+            why = "Kite login is missing" if self.state.token_ok is False else (self.morning_err and "set-up problem (see /debug logs)") or "market set-up is still pending"
+            return P.ready_text(self.day, False, live, why)
+        return P.ready_text(self.day, True, live)
 
     # ------------------------------------------------------------ run-time
     def _drain(self):
@@ -414,10 +419,10 @@ class Daemon(object):
         self.state.last_tick_ts = last
         if age > STALE_S and not self.stale_alerted:
             self.stale_alerted, self.state.feed_ok = True, False
-            self._say("feed_stale", "FEED STALE: no new trade for %d s (last %s)." % (age, last.strftime("%H:%M:%S")))
+            self._say("feed_stale", "ATTENTION: market data has stopped (no price for %d s). The bot is trying to reconnect." % age)
         elif age <= STALE_S and self.stale_alerted:
             self.stale_alerted, self.state.feed_ok = False, True
-            self._say("info", "Feed recovered.")
+            self._say("info", "Market data is back.")
         elif age <= STALE_S:
             self.state.feed_ok = True
 
@@ -447,31 +452,48 @@ class Daemon(object):
         self._simulate_missed()
         text = day_summary(self.store, self.day)
         if self.state.trading_blocked:
-            late = len([x for x in self.store.signals_for_day(self.day) if x["reasons"] == "late_login"])
-            text += "\nDATA_ONLY: %s. %d signal(s) would have fired, none traded." % (self.state.trading_blocked, late)
+            text += "\nNOT TRADED today: %s." % P.blocked_text(self.state.trading_blocked)
             if self.login is not None and not self.login.logged_in_today():
-                text += "\nNo login today: no data was collected. Log in before midnight (/login) to recover the day's bars."
+                text += "\nNo login today, so no data was collected. Log in before midnight (/login) to recover the day."
         if self.provider is None:
-            text += "\n(no market-data provider configured)"
-        vb = self.store.get_bars(self.day, "INDIA VIX", "vix")
-        if vb:
-            text += "\nIndia VIX (data only): open %.2f, close %.2f, high %.2f, low %.2f." % (
-                vb[0]["c"], vb[-1]["c"], max(b["c"] for b in vb), min(b["c"] for b in vb))
+            text += "\n(no market-data source configured)"
         self._say("summary", text)
+        extra = []
         if datetime.datetime.strptime(self.day, "%Y-%m-%d").weekday() == 4:
             from trader.compare import compare
-            self._say("info", compare(self.store))
+            extra.append(compare(self.store))
         if self.pipe is not None and self.provider is not None:
             try:
                 hist = self.provider.history(self.day, sorted(self.pipe.bb))
                 n, bad, mx = reconcile(self.store, self.day, hist)
-                self._say("info", "Reconciliation: %d bars compared, %d differ (max diff %.2f)." % (n, bad, mx)
-                          + ("  CHECK the tick path." if bad else ""))
+                extra.append("Reconciliation: %d bars compared, %d differ (max diff %.2f)." % (n, bad, mx))
+                if bad and self._once("recon-alert"):
+                    pass
             except Exception as e:
                 self.store.event("ERROR", "recon", "%r" % e)
-                self._say("info", "Reconciliation failed: %s" % type(e).__name__)
+                extra.append("Reconciliation failed: %s" % type(e).__name__)
+        vb = self.store.get_bars(self.day, "INDIA VIX", "vix")
+        if vb:
+            extra.append("India VIX (data only): open %.2f, close %.2f, high %.2f, low %.2f." % (
+                vb[0]["c"], vb[-1]["c"], max(b["c"] for b in vb), min(b["c"] for b in vb)))
+        if self.pipe is not None:
+            extra.append("Open-price corrections today: %s" % self.pipe.fix_stats())
+        self._write_analysis(analysis_report(self.store, self.day) + "\n\n" + "\n".join(extra))
         if self.cfg is not None:
             try:
-                self.export_now()
+                make_export(self.store, self.cfg.exports, self.day)  # saved on the VM (and the nightly backup), not sent to Telegram
             except Exception as e:
                 self.store.event("ERROR", "export", "%r" % e)
+
+    def _write_analysis(self, text):
+        """Technical day detail (rule matches/rejections, run-up, reconciliation) goes to a file, never to Telegram."""
+        if self.cfg is None:
+            return
+        try:
+            d = self.cfg.exports
+            if not os.path.isdir(d):
+                os.makedirs(d, 0o700)
+            with open(os.path.join(d, "analysis_%s.txt" % self.day), "w") as f:
+                f.write(text + "\n")
+        except Exception as e:
+            self.store.event("ERROR", "analysis", "%r" % e)

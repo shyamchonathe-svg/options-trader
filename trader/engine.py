@@ -101,7 +101,7 @@ class _Index(object):
 
 class Engine(object):
     def __init__(self, store, broker, day, mode="paper", rr=3.0, midday_filter=True, max_hold=12,
-                 notify=None, rules_version=RULES_VERSION, guard=None):
+                 notify=None, rules_version=RULES_VERSION, guard=None, capital=None, use_pct=0.9):
         self.store = store
         self.broker = broker
         self.day = day
@@ -112,6 +112,8 @@ class Engine(object):
         self.notify = notify
         self.rules_version = rules_version
         self.guard = guard
+        self.capital = capital          # money per index (None = trade one contract lot, used by replay/tests)
+        self.use_pct = use_pct          # share of that money a position may use
         self.block_reason = "backfill"   # recorded as the reason when accepting is False ('late_login' on data-only days)
         self.accepting = True   # False while back-filling history after a late start: no NEW orders, signals recorded as 'missed'
         self._ix = {}      # index name -> _Index
@@ -263,16 +265,29 @@ class Engine(object):
             if dist > R.MAX_DIST_STEPS:
                 why.append("not-ATM")
             if not why and ix.taken:
-                why.append("one-position")
+                why.append("already-traded-today")
             if not why and self.guard is not None:
                 ok, reason = self.guard.allow_entry(self.day, self.mode)
                 if not ok:
                     why.append("risk:" + reason)
+            qty = self._qty(opt, entry)
+            if not why and qty <= 0:
+                why.append("capital")
             if why:
                 self._record(ix, i, opt, "rejected", ",".join(why), sig, ix.gap, dist)
                 continue
+            sig["qty"], sig["index_px"] = qty, ip
             ix.taken = True
             self._enter(ix, i, opt, sig, ix.gap, dist)
+
+    def _qty(self, opt, entry):
+        """Fixed-capital sizing: whole lots that fit in use_pct of the per-index capital (0 = cannot afford one lot).
+        opt.qty is the contract's lot size. capital None keeps the old one-lot behaviour."""
+        if self.capital is None:
+            return opt.qty
+        if entry <= 0 or opt.qty <= 0:
+            return 0
+        return int(self.capital * self.use_pct // (entry * opt.qty)) * opt.qty
 
     # ---------------------------------------------------------------- records / orders
     def _emit(self, kind, payload):
@@ -290,7 +305,8 @@ class Engine(object):
             target=sig["target"] if sig else None, rules_version=self.rules_version, gap=gap, dist=dist)
         if created:
             self.store.event("INFO", "signal", "%s %s slot %d %s %s" % (opt.symbol, opt.side, i, status, reasons))
-            self._emit("signal", {"symbol": opt.symbol, "slot": i, "t": R.tstr(i), "status": status, "reasons": reasons})
+            if status == "traded":
+                pass            # the user is told about trades only (entry/exit); every signal stays in the database
         return sid
 
     def _enter(self, ix, i, opt, sig, gap, dist):
@@ -301,17 +317,19 @@ class Engine(object):
                 return
         sid = self._record(ix, i, opt, "traded", "", sig, gap, dist)
         tr = self.store.trade_for_signal(sid)
+        qty = sig.get("qty", opt.qty)
         if tr is None:
-            fill = self.broker.buy(opt.symbol, opt.qty, sig["entry"], R.tstr(i + 1))
-            tid, _ = self.store.add_trade(sid, self.mode, opt.qty, R.tstr(i + 1), fill.price)
-            self.store.event("INFO", "entry", "%s qty %d @ %.2f stop %.2f target %.2f" % (
-                opt.symbol, opt.qty, fill.price, sig["stop"], sig["target"]))
+            fill = self.broker.buy(opt.symbol, qty, sig["entry"], R.tstr(i + 1))
+            tid, _ = self.store.add_trade(sid, self.mode, qty, R.tstr(i + 1), fill.price)
+            self.store.event("INFO", "entry", "%s qty %d @ %.2f stop %.2f target %.2f index %s" % (
+                opt.symbol, qty, fill.price, sig["stop"], sig["target"], sig.get("index_px")))
             self._emit("entry", {"symbol": opt.symbol, "t": R.tstr(i + 1), "price": fill.price, "stop": sig["stop"],
-                                 "target": sig["target"], "qty": opt.qty})
+                                 "target": sig["target"], "qty": qty, "index": ix.spec.name.title(),
+                                 "index_px": sig.get("index_px")})
         else:
             tid = tr["id"]
         ix.pos = {"symbol": opt.symbol, "i": i, "entry": sig["entry"], "stop": sig["stop"], "target": sig["target"],
-                  "R": sig["R"], "qty": opt.qty, "trade_id": tid, "limit": min(i + self.max_hold, LAST_SLOT),
+                  "R": sig["R"], "qty": qty, "trade_id": tid, "index_px": sig.get("index_px"), "entry_t": R.tstr(i + 1), "limit": min(i + self.max_hold, LAST_SLOT),
                   "last_close": sig["entry"], "last_slot": i + 1}
 
     def _check_exit(self, ix, symbol, slot, bar):
@@ -341,4 +359,6 @@ class Engine(object):
         self.store.close_trade(p["trade_id"], R.tstr(slot), fill.price, reason, r_mult, pnl)
         self.store.event("INFO", "exit", "%s %s @ %.2f R=%.2f" % (p["symbol"], reason, fill.price, r_mult))
         self._emit("exit", {"symbol": p["symbol"], "t": R.tstr(slot), "price": fill.price, "reason": reason,
-                            "r": r_mult, "pnl": pnl})
+                            "r": r_mult, "pnl": pnl, "qty": p["qty"], "entry_px": p["entry"], "entry_t": p.get("entry_t"),
+                            "index": ix.spec.name.title(), "entry_index_px": p.get("index_px"),
+                            "index_px": (ix.series[ix.spec.symbol].by.get(slot) or {}).get("C")})

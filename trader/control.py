@@ -11,20 +11,20 @@ import datetime
 import random
 
 from trader import rules_v3 as R
+from trader import present as P
 from trader.state import RISK_BOUNDS
 
 CONFIRM_TTL = 120
 MAX_PIN_FAILS = 3
 
-HELP = """Read-only: /status /health /positions /signals [day] /why HH:MM [symbol] /trades [day] /summary [day]
-/compare /risk /bars <symbol> /config /logs [n] /replay /export
-Control: /pause /resume /stop /flat /restart /note <text> /ack
-Risk: /set <key> <value>   keys: %s
-Live (needs code+PIN): /mode shadow|live /arm live /disarm   confirm with: /yes <code> [PIN]
-Login: /login (one-tap link)  /token <request_token or URL> (fallback)  /recover
-Days: /skip  /unskip  /holiday YYYY-MM-DD""" % ", ".join(sorted(RISK_BOUNDS))
+HELP = """Everyday: /status  /positions  /trades  /summary (day report)  /login
+More: /health  /risk  /pause /resume /stop /flat
+Technical (for debugging): /debug [status|why|signals|analysis|logs]  /bars <symbol>  /config  /export  /compare
+Settings: /set <key> <value>   keys: %s
+Live orders (code+PIN): /mode shadow|live  /arm live  /disarm   confirm with: /yes <code> [PIN]
+Other: /token <request_token or URL>  /recover  /restart  /note <text>  /ack  /skip  /unskip  /holiday YYYY-MM-DD""" % ", ".join(sorted(RISK_BOUNDS))
 
-COMMANDS = ("help start status health positions signals why trades summary compare risk bars config logs replay export "
+COMMANDS = ("debug help start status health positions signals why trades summary compare risk bars config logs replay export "
             "menu pause resume stop flat restart note ack set mode arm disarm token yes login skip unskip holiday recover").split()
 
 
@@ -101,32 +101,44 @@ class Controller(object):
         return "Tap a button, or type /help for every command."
 
     def cmd_status(self, args, now):
-        st, day = self.state, now.strftime("%Y-%m-%d")
-        tr = self.store.trades_for_day(day)
-        openp = [t for t in tr if t["exit_t"] is None]
-        r = sum(t["r_mult"] or 0.0 for t in tr if t["exit_t"] is not None)
-        age = "n/a" if st.last_tick_ts is None else "%ds" % max(0, int((now - st.last_tick_ts).total_seconds()))
-        return ("v%s  mode=%s armed=%s  paused=%s stopped=%s\nfeed=%s last tick %s  token=%s  day=%s\n"
-                "today: signals %d, trades %d (open %d), closed R %s") % (
-            st.version, st.mode, st.armed, st.paused, st.stopped, st.feed_ok, age, st.token_ok,
-            ("DATA_ONLY: " + st.trading_blocked) if st.trading_blocked else "ok",
-            len(self.store.signals_for_day(day)), len(tr), len(openp), _fmt_r(r))
+        day = now.strftime("%Y-%m-%d")
+        return P.status_text(self.state, now, self.store.trades_for_day(day), getattr(self.state, "setup_done", False))
 
     def cmd_health(self, args, now):
         st = self.state
         row = self.store.db.execute("SELECT * FROM health ORDER BY rowid DESC LIMIT 1").fetchone()
         errs = len([e for e in self.store.recent_events(50) if e["level"] == "ERROR"])
-        age = "n/a" if st.last_tick_ts is None else "%ds ago" % max(0, int((now - st.last_tick_ts).total_seconds()))
-        extra = "" if row is None else "\nbars built %s, lag %s ms (at %s)" % (row["bars_built"], row["lag_ms"], row["ts"])
-        return "feed=%s  last tick %s  token=%s  recent errors=%d%s" % (st.feed_ok, age, st.token_ok, errs, extra)
+        return P.health_text(st, now, errs, None if row is None else row["bars_built"], None if row is None else row["lag_ms"])
+
+    def cmd_debug(self, args, now):
+        """Raw, technical views (variable names allowed here only)."""
+        sub = args[0].lower() if args else "status"
+        rest = args[1:]
+        if sub == "status":
+            st, day = self.state, now.strftime("%Y-%m-%d")
+            age = "n/a" if st.last_tick_ts is None else "%ds" % max(0, int((now - st.last_tick_ts).total_seconds()))
+            return ("v%s mode=%s armed=%s paused=%s stopped=%s feed_ok=%s last_tick=%s token_ok=%s setup_done=%s blocked=%s\n"
+                    "signals %d, trades %d") % (st.version, st.mode, st.armed, st.paused, st.stopped, st.feed_ok, age,
+                                                st.token_ok, getattr(st, "setup_done", None), st.trading_blocked,
+                                                len(self.store.signals_for_day(day)), len(self.store.trades_for_day(day)))
+        if sub == "signals":
+            return self.cmd_signals(rest, now)
+        if sub == "why":
+            return self.cmd_why(rest, now)
+        if sub == "analysis":
+            from trader.notify import analysis_report
+            return analysis_report(self.store, self._day(rest, now))
+        if sub == "logs":
+            return self.cmd_logs(rest, now)
+        return "usage: /debug status|why HH:MM [symbol]|signals [day]|analysis [day]|logs [n]"
 
     def cmd_positions(self, args, now):
         day = now.strftime("%Y-%m-%d")
         rows = [t for t in self.store.trades_for_day(day) if t["exit_t"] is None]
         if not rows:
             return "No open positions."
-        return "\n".join("%s qty %s entry %.2f @%s stop %.2f target %.2f" % (
-            t["symbol"], t["qty"], t["entry_px"], t["entry_t"], t["stop"], t["target"]) for t in rows)
+        return "\n".join("%s  qty %s  bought %s @ %.2f   (stop %.2f, target %.2f)" % (
+            P.pretty_symbol(t["symbol"]), t["qty"], t["entry_t"], t["entry_px"], t["stop"], t["target"]) for t in rows)
 
     def cmd_signals(self, args, now):
         rows = self.store.signals_for_day(self._day(args, now))
@@ -156,13 +168,8 @@ class Controller(object):
         return out
 
     def cmd_trades(self, args, now):
-        rows = self.store.trades_for_day(self._day(args, now))
-        if not rows:
-            return "No trades."
-        return "\n".join("%s %s in %.2f@%s -> %s %s R %s" % (
-            R.tstr(t["slot"]), t["symbol"], t["entry_px"], t["entry_t"],
-            "open" if t["exit_t"] is None else "%.2f@%s" % (t["exit_px"], t["exit_t"]),
-            t["exit_reason"] or "", _fmt_r(t["r_mult"])) for t in rows)
+        from trader.notify import day_summary
+        return day_summary(self.store, self._day(args, now))
 
     def cmd_summary(self, args, now):
         from trader.notify import day_summary
@@ -182,9 +189,12 @@ class Controller(object):
     def cmd_bars(self, args, now):
         if not args:
             return "usage: /bars <symbol>"
-        rows = self.store.get_bars(now.strftime("%Y-%m-%d"), args[0])[-6:]
+        name = " ".join(args)
+        rows = self.store.get_bars(now.strftime("%Y-%m-%d"), name)[-6:]
         if not rows:
-            return "No bars stored for %s today." % args[0]
+            rows = self.store.get_bars(now.strftime("%Y-%m-%d"), name, "vix")[-6:]
+        if not rows:
+            return "No bars stored for %s today." % name
         return "\n".join("%s O%.2f H%.2f L%.2f C%.2f n=%s" % (R.tstr(r["slot"]), r["o"], r["h"], r["l"], r["c"], r["n"]) for r in rows)
 
     def cmd_config(self, args, now):

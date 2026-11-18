@@ -66,14 +66,15 @@ def atm_strike(spot, step):
 def select_strikes(contracts, expiry, spot, step, width=1):
     """Contracts for ATM-width..ATM+width, both CE and PE. Raises if any is missing."""
     atm = atm_strike(spot, step)
-    want = [atm + k * step for k in range(-width, width + 1)]
     idx = dict(((c.strike, c.opt), c) for c in contracts if c.expiry == expiry)
     sel, missing = [], []
-    for s in want:
+    for k in range(-width, width + 1):
+        s = atm + k * step
         for opt in ("CE", "PE"):
             c = idx.get((float(s), opt))
             if c is None:
-                missing.append("%s%s" % (s, opt))
+                if abs(k) <= 2:                 # the strikes that matter must exist; far wings may be unlisted
+                    missing.append("%s%s" % (s, opt))
             else:
                 sel.append(c)
     if missing:

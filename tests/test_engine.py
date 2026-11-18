@@ -117,7 +117,7 @@ class Filters(unittest.TestCase):
             drive(eng, 40)
         sig = dict((s["slot"], s) for s in st.signals_for_day(DAY))
         self.assertEqual(sig[5]["status"], "traded")
-        self.assertEqual((sig[25]["status"], sig[25]["reasons"]), ("rejected", "one-position"))
+        self.assertEqual((sig[25]["status"], sig[25]["reasons"]), ("rejected", "already-traded-today"))
         self.assertEqual(len(st.trades_for_day(DAY)), 1)
 
     def test_gap_direction_rejects_wrong_side(self):

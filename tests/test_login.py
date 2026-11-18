@@ -200,8 +200,9 @@ class Sim(unittest.TestCase):
         t = st.sim_trades_for_day("2026-11-17")[0]
         self.assertEqual((t["exit_reason"], t["exit_px"], t["r_mult"], t["entry_t"], t["exit_t"]), ("target", 130.0, 3.0, "09:40", "09:45"))
         self.assertEqual(st.trades_for_day("2026-11-17"), [])
-        from trader.notify import day_summary
-        txt = day_summary(st, "2026-11-17")
+        from trader.notify import day_summary, analysis_report
+        self.assertIn("[simulated] X", day_summary(st, "2026-11-17"))
+        txt = analysis_report(st, "2026-11-17")
         self.assertIn("[late-sim, not a real trade] X", txt)
         self.assertIn("entry 09:40 @ 100.00  stop 90.00  target 130.00  exit 09:45 @ 130.00 (target)  R +3.00 held 5 min", txt)
         self.assertIn("ran up to +3.1R", txt)
@@ -239,9 +240,10 @@ class Misc(unittest.TestCase):
 
     def test_no_trade_report(self):
         st, state, tr, d, prov, clk = rig()
-        from trader.notify import day_summary
+        from trader.notify import day_summary, analysis_report
         st.add_signal("2026-11-17", "X", 4, "CE", "rejected", "not-ATM", rules_version="v", gap=0, dist=3)
-        txt = day_summary(st, "2026-11-17")
+        self.assertEqual(day_summary(st, "2026-11-17"), "Day report 2026-11-17\nNo trade today.")
+        txt = analysis_report(st, "2026-11-17")
         self.assertIn("NO TRADE today", txt); self.assertIn("not-ATM 1", txt)
 
 

@@ -20,6 +20,7 @@ class RuntimeState(object):
         self.last_tick_ts = None
         self.feed_ok = None
         self.token_ok = None
+        self.setup_done = False         # today's market watch (strikes, feed) is running
         self.trading_blocked = None     # None, or why today is DATA_ONLY (late / missing login, skipped day)
         self.mode = store.kv_get("mode", "shadow")
         self.paused = store.kv_get("paused", "0") == "1"

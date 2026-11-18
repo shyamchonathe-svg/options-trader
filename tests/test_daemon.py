@@ -63,12 +63,12 @@ class Life(unittest.TestCase):
         st, state, tr, d, cfg = make(None)
         for t in (at(8, 0), at(9, 11), at(15, 32), at(16, 1)):
             d.step(t)
-        self.assertTrue(any("no market-data provider" in x for x in texts(tr)))
-        self.assertEqual(len(tr.docs), 1)
+        self.assertTrue(any("no market-data source" in x for x in texts(tr)))
+        self.assertEqual(len(tr.docs), 0)          # the nightly export is saved on the VM, not sent to Telegram
         n = len(tr.sent)
         d2 = Daemon(st, state, Notifier(tr, "1", st), None, PaperBroker(), cfg=cfg)
         d2.step(at(16, 2))                       # restart later same day: nothing repeated
-        self.assertEqual(len(tr.sent), n); self.assertEqual(len(tr.docs), 1)
+        self.assertEqual(len(tr.sent), n); self.assertEqual(len(tr.docs), 0)
         self.assertTrue(os.path.exists(os.path.join(cfg.exports, "trader_2026-11-17.db.gz")))
 
     def test_weekend_silent(self):
@@ -106,12 +106,12 @@ class Life(unittest.TestCase):
         d.step(at(9, 0)); d.step(at(9, 16))
         d.on_tick(Tick("NIFTY_index", at(9, 21, 30), 22500.0, None)); d.on_tick(Tick("NIFTY_index", at(9, 21, 40), 22501.0, None))
         d.step(at(9, 22))
-        self.assertFalse(any("STALE" in x for x in texts(tr)))
+        self.assertFalse(any("market data has stopped" in x for x in texts(tr)))
         d.step(at(9, 25)); d.step(at(9, 26))
-        self.assertEqual(len([x for x in texts(tr) if "STALE" in x]), 1)
+        self.assertEqual(len([x for x in texts(tr) if "market data has stopped" in x]), 1)
         d.on_tick(Tick("NIFTY_index", at(9, 26, 30), 22500.0, None)); d.step(at(9, 26, 31))
         d.on_tick(Tick("NIFTY_index", at(9, 26, 40), 22501.0, None)); d.step(at(9, 26, 41))
-        self.assertTrue(any("recovered" in x for x in texts(tr)))
+        self.assertTrue(any("Market data is back" in x for x in texts(tr)))
 
     def test_backfill_records_missed_not_trades(self):
         # a clean uptrend where the option dips and re-rises would signal; here we only check the accepting flag path

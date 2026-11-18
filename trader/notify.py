@@ -1,5 +1,6 @@
 """Push alerts. Formatting is pure; Notifier sends via a transport and NEVER raises (alerts must not stop trading)."""
 from trader import rules_v3 as R
+from trader import present as P
 
 
 def _minutes(hhmm):
@@ -38,7 +39,8 @@ def _trade_line(store, day, t, tag):
         tag, t["symbol"], t["entry_t"], t["entry_px"], t["stop"], t["target"], ex, r, hold, _peak(store, day, t))
 
 
-def day_summary(store, day):
+def analysis_report(store, day):
+    """Developer/debug view: every trade with run-up, plus what the rules rejected and why. Never sent to Telegram."""
     sigs = store.signals_for_day(day)
     trs = store.trades_for_day(day)
     closed = [t for t in trs if t["exit_t"] is not None]
@@ -62,18 +64,37 @@ def day_summary(store, day):
     return "\n".join(lines)
 
 
+def _clean_line(n, t, sim=False):
+    sold = "still open" if t["exit_t"] is None else "sold %s @ %.2f (%s)" % (t["exit_t"], t["exit_px"], P.exit_reason(t["exit_reason"]))
+    pnl = "" if t["pnl"] is None else "   P&L %s" % P.inr(t["pnl"], sign=True)
+    return "%d) %s%s  qty %s\n   bought %s @ %.2f, %s%s" % (n, "[simulated] " if sim else "", P.pretty_symbol(t["symbol"]),
+                                                       t["qty"], t["entry_t"], t["entry_px"], sold, pnl)
+
+
+def day_summary(store, day):
+    """The user-facing day report: trades and totals only. Rule details live in analysis_report / the database."""
+    trs = store.trades_for_day(day)
+    closed = [t for t in trs if t["exit_t"] is not None]
+    wins = len([t for t in closed if (t["pnl"] or 0) > 0])
+    net = sum((t["pnl"] or 0.0) for t in closed)
+    lines = ["Day report %s" % day]
+    if not trs:
+        lines.append("No trade today." if not store.sim_trades_for_day(day) else "No real trade today.")
+    else:
+        lines.append("%d trade(s): %d profit, %d loss.   Net P&L: %s" % (len(trs), wins, len(closed) - wins, P.inr(net, sign=True)))
+        for n, t in enumerate(trs, 1):
+            lines.append(_clean_line(n, t))
+    for n, t in enumerate(store.sim_trades_for_day(day), 1):
+        lines.append(_clean_line(n, t, sim=True))
+    return "\n".join(lines)
+
+
 def format_event(kind, p):
-    if kind == "signal":
-        if p["status"] in ("skipped", "dropped"):
-            return None
-        if p["status"] == "rejected" and p.get("reasons") == "not-ATM":
-            return None             # by-design noise: stays in the database and the exports, not on Telegram
-        tag = {"traded": "SIGNAL", "missed": "SIGNAL MISSED"}.get(p["status"], "pattern rejected")
-        return "%s %s at %s%s" % (tag, p["symbol"], p["t"], (" (%s)" % p["reasons"]) if p["reasons"] else "")
+    """Telegram texts. Only trades (bought / sold) and operational notices go to the user; signals and rejections never do."""
     if kind == "entry":
-        return "ENTRY %s qty %s @ %.2f  stop %.2f  target %.2f  (%s)" % (p["symbol"], p["qty"], p["price"], p["stop"], p["target"], p["t"])
+        return P.entry_text(p)
     if kind == "exit":
-        return "EXIT %s %s @ %.2f  R %+.2f  pnl %.2f  (%s)" % (p["symbol"], p["reason"], p["price"], p["r"], p["pnl"], p["t"])
+        return P.exit_text(p)
     if kind in ("halt", "feed_stale", "token_missing", "ready", "summary", "info"):
         return p.get("text", kind)
     return None

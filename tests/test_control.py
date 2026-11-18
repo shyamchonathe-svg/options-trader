@@ -137,8 +137,11 @@ class ControlTests(unittest.TestCase):
                     "/risk", "/bars X", "/config", "/logs", "/replay", "/export", "/note hi", "/ack", "/foo"]:
             out = c.handle(CHAT, cmd)
             self.assertTrue(out and all(isinstance(x, str) for x in out), cmd)
-        self.assertIn("+3.00", c.handle(CHAT, "/summary")[0])
+        self.assertIn("+\u20b930", c.handle(CHAT, "/summary")[0])
         self.assertIn("NIFTY_22600PE", c.handle(CHAT, "/trades")[0])
+        self.assertIn("Checked", c.handle(CHAT, "/debug analysis")[0])
+        for bad in ("feed_ok", "token_ok", "armed=", "paused="):
+            self.assertNotIn(bad, c.handle(CHAT, "/status")[0] + c.handle(CHAT, "/health")[0])
 
     def test_guard_via_controller(self):
         st, state, c, clk, _ = make()

@@ -175,12 +175,16 @@ class TestMorning(unittest.TestCase):
         self.assertEqual(n[0].symbol, "NSE:NIFTY 50"); self.assertEqual(s[0].symbol, "BSE:SENSEX")
         self.assertEqual(n[1], 25144.3); self.assertEqual(s[1], 81592.45)
         self.assertEqual(n[0].step, 50); self.assertEqual(s[0].step, 100)
-        self.assertEqual(len(n[0].options), 2 * 11)                       # ATM +/-5 strikes, CE and PE
+        self.assertGreaterEqual(len(n[0].options), 2 * 11)                # wide window (+/-14 where listed), CE and PE
         # nearest expiry only (the December contract is ignored), quantity is the lot size from the dump
         self.assertTrue(all(o.symbol.startswith("NFO:NIFTY") for o in n[0].options))
         self.assertEqual(set(o.qty for o in n[0].options), {75}); self.assertEqual(set(o.qty for o in s[0].options), {20})
         strikes = sorted(set(o.strike for o in n[0].options))
-        self.assertEqual(strikes[0], 25200 - 250 + 0); self.assertEqual(strikes[-1], 25200 + 250)   # ATM of open 25200
+        for k in (-2, -1, 0, 1, 2):                       # before the open: centred on the PREVIOUS CLOSE (25144.3 -> 25150),
+            self.assertIn(25150 + 50 * k, strikes)        # not on the unreliable pre-open price (25200 in this fixture)
+        self.assertNotIn(25150 + 50 * 15, strikes)
+        self.assertEqual(set(n[0].options[0:0]), set())
+        self.assertTrue(plan["near"][n[0].options[0].symbol][0] == "NSE:NIFTY 50")
         # seeds: previous session closes, 75 bars, slot-ordered, post-close CAS excluded
         for sp in (n, s):
             for sym, closes in sp[2].items():
@@ -196,11 +200,22 @@ class TestMorning(unittest.TestCase):
         files = sorted(os.listdir(cfg.instruments))
         self.assertEqual(files, ["2026-11-17_BFO.csv", "2026-11-17_NFO.csv"])
 
+    def test_exact_bar_returns_the_exchange_candle(self):
+        p, kite, cfg, plan = self.plan_at(D(2026, 11, 17, 9, 30, 10))
+        tok = p.tokens["NSE:NIFTY 50"]
+        b = p.exact_bar("NSE:NIFTY 50", 3)                       # slot 3 exists in the fake history
+        base = 100.0 + (tok % 7) + 3
+        self.assertEqual(b, (base, base + 2, base - 2, base + 1))
+        self.assertIsNone(p.exact_bar("NSE:NIFTY 50", 20))       # not published yet
+        opt = [o for o in plan["indexes"][0][0].options][0].symbol
+        self.assertIsNone(p.exact_bar(opt, 4))                   # hole in the fake data
+
     def test_atm_follows_the_open_not_stale_close(self):
         p, kite, cfg, plan = self.plan_at(D(2026, 11, 17, 9, 30, 10), nifty_open=25400.0)
         n = [s for s, _, _ in plan["indexes"] if s.name == "NIFTY"][0]
         strikes = sorted(set(o.strike for o in n.options))
-        self.assertEqual((strikes[0] + strikes[-1]) / 2, 25400)
+        for k in (-2, -1, 0, 1, 2):                       # after the open the window is centred on the live price
+            self.assertIn(25400 + 50 * k, strikes)
 
     def test_backfill_complete_bars_only_holes_flat_and_ordered(self):
         # 09:36 -> slots 0..3 complete (slot 3 ends 09:35); slot 4 still running
@@ -333,7 +348,7 @@ class TestDaemonIntegration(unittest.TestCase):
         self.assertFalse(d.restart_requested)
         d.step(D(2026, 11, 17, 15, 50, 5))
         self.assertFalse(d.restart_requested)                      # not before the 16:00 day report
-        self.assertTrue(any("Daily capture" in t for _, t in self.tr.sent))
+        self.assertFalse(any("Daily capture" in t for _, t in self.tr.sent))     # chart/bhavcopy reminder retired
         d.step(D(2026, 11, 17, 16, 0, 5))
         self.assertTrue(d.restart_requested)
         self.assertTrue(any(t.startswith("Day report") for _, t in self.tr.sent))
@@ -344,3 +359,4 @@ class TestDaemonIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

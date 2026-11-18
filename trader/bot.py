@@ -6,13 +6,11 @@ import time
 # Buttons only ever run READ-ONLY commands. Anything that changes state (stop, flat, arm, mode, set...) stays typed,
 # with its one-time code and PIN, so a stray tap can never move money or change risk.
 MENU = [[("Status", "status"), ("Positions", "positions"), ("Trades", "trades")],
-        [("Day report", "summary"), ("Signals", "signals"), ("Health", "health")],
-        [("Risk", "risk"), ("Compare exits", "compare"), ("Login", "login")]]
+        [("Day report", "summary"), ("Health", "health"), ("Login", "login")]]
 BUTTON_CMDS = set(c for row in MENU for _, c in row) | set(["menu"])
-SHOW_MENU_AFTER = set(["status", "menu", "start", "help", "summary", "positions", "trades", "health", "risk", "compare", "signals"])
-COMMAND_LIST = [("menu", "Buttons"), ("status", "Mode, feed, day state"), ("positions", "Open positions"),
-                ("trades", "Today's trades"), ("summary", "Day report"), ("signals", "Pattern matches"),
-                ("health", "Feed and system health"), ("risk", "Risk limits"), ("compare", "Exit-rule comparison"),
+SHOW_MENU_AFTER = set(["status", "menu", "start", "help", "summary", "positions", "trades", "health"])
+COMMAND_LIST = [("menu", "Buttons"), ("status", "Is everything OK?"), ("positions", "Open positions"),
+                ("trades", "Today's trades and P&L"), ("summary", "Day report"), ("health", "Data and login health"),
                 ("login", "Kite login link"), ("help", "All commands")]
 
 

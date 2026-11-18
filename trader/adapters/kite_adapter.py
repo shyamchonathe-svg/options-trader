@@ -29,8 +29,9 @@ log = logging.getLogger("kite")
 IST = datetime.timedelta(hours=5, minutes=30)
 OPEN_MIN = 9 * 60 + 15
 LAST_SLOT = 74
-STRIKE_WIDTH = 5            # ATM +/- 5 strikes: rules only trade within 1.5 steps of the signal-time index price,
-                            # the extra strikes cover the index drifting away from the morning reference price.
+STRIKE_WIDTH = 14           # ATM +/- 14 strikes around the reference price. The rules only trade within 1.5 steps of the
+                            # index, so the wide window covers a gap plus a full day's drift (Nifty +/-700, Sensex +/-1400).
+OPEN_SETTLE = datetime.time(9, 15, 30)   # before this the quote is a pre-open indication: use the previous close instead
 HIST_PAUSE_S = 0.4          # Kite historical API limit: 3 requests/second
 HIST_LOOKBACK_DAYS = 8      # enough calendar days to contain the previous trading session
 
@@ -289,7 +290,10 @@ class KiteProvider(object):
                 raise RuntimeError("quote missing for %s" % cfg.spot_key)
             o = (qi.get("ohlc") or {})
             prev_close = float(o.get("close") or 0)
-            ref = float(o.get("open") or 0) or float(qi.get("last_price") or 0) or prev_close
+            if now.time() < OPEN_SETTLE:
+                ref = prev_close                          # the 09:00 quote is pre-open and can be 1% off (18 Nov: +0.7%)
+            else:
+                ref = float(qi.get("last_price") or 0) or float(o.get("open") or 0) or prev_close
             if prev_close <= 0 or ref <= 0:
                 raise RuntimeError("no price/close for %s" % cfg.spot_key)
             rows = [norm_row(r) for r in k.instruments(cfg.exchange)]
@@ -313,7 +317,11 @@ class KiteProvider(object):
 
         feed = KiteFeed(self.api_key, tok["access_token"], dict((v, kk) for kk, v in all_keys.items()),
                         index_tokens, self.ticker_factory)
-        return {"indexes": indexes, "backfill": backfill, "feed": feed}
+        near = {}
+        for spec, _pc in specs:
+            for o in spec.options:
+                near[o.symbol] = (spec.symbol, o.strike, spec.step)
+        return {"indexes": indexes, "backfill": backfill, "feed": feed, "near": near}
 
     # ---------------------------------------------------------------- historical
     def _candles(self, key, frm, to):
@@ -369,6 +377,16 @@ class KiteProvider(object):
                 rows.append((key, s, b[0], b[1], b[2], b[3]))
         rows.sort(key=lambda r: (r[1], r[0]))
         return rows
+
+    def exact_bar(self, key, slot):
+        """The exchange's own 5-minute candle for `slot` of today as (o,h,l,c), or None if it is not published yet.
+        One history request; the caller rate-limits."""
+        today = self.clock().date()
+        start = datetime.datetime.combine(today, datetime.time(9, 15)) + datetime.timedelta(minutes=5 * slot)
+        for d, o, h, l, c in self._candles(key, start, start + datetime.timedelta(minutes=4, seconds=59)):
+            if d == start:
+                return (o, h, l, c)
+        return None
 
     def history(self, day, symbols):
         today = datetime.datetime.strptime(day, "%Y-%m-%d").date()
