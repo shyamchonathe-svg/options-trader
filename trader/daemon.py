@@ -474,8 +474,11 @@ class Daemon(object):
                 extra.append("Reconciliation failed: %s" % type(e).__name__)
         vb = self.store.get_bars(self.day, "INDIA VIX", "vix")
         if vb:
-            extra.append("India VIX (data only): open %.2f, close %.2f, high %.2f, low %.2f." % (
+            extra.append("India VIX: open %.2f, close %.2f, high %.2f, low %.2f." % (
                 vb[0]["c"], vb[-1]["c"], max(b["c"] for b in vb), min(b["c"] for b in vb)))
+        rg = self.store.kv_get("regime-%s" % self.day)
+        if rg:
+            extra.append("VIX regime (rules %s): %s" % (self.engine.rules_version if self.engine else "?", rg.replace("|", " / ")))
         if self.pipe is not None:
             extra.append("Open-price corrections today: %s" % self.pipe.fix_stats())
         self._write_analysis(analysis_report(self.store, self.day) + "\n\n" + "\n".join(extra))

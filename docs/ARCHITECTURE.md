@@ -12,6 +12,7 @@ Kite ticks -> `feed.TradeFilter` -> `candles.BarBuilder` (5-min bars, slot 0 = 0
 | Module | Role |
 |---|---|
 | `rules_v3.py` | PURE and FROZEN strategy: hammer pattern, EMA10/20 direction, ATM filter, gap filter, midday block, stop, 3R target, 12-bar time exit. Changing behaviour = a new version (v4), never an edit. |
+| `rules_v4.py` | PURE VIX regime on top of v3 (from 19 Nov 2026): India VIX at the 09:15 open: <12 no trades; 12-15 target 4R, hold 60 min, 1 trade per index; >15 target 2R, hold 30 min, up to 2 trades per index (next only after the previous exits); VIX down >5% by 09:30 = no trades; no VIX = v3 settings. Engine decides once per day (`_decide_regime`) from the stored `INDIA VIX` bars; trades carry rules version v4.0 (v3 history stays v3.0). |
 | `engine.py` | Paper engine: entries at next-bar open, one position per index, stop/target/time exit, `accepting` flag and `block_reason`. |
 | `compare.py` | Replays stored trades under alternative exits (A..E) for the v4 evidence. Read-only, never trades. |
 | `candles.py`, `feed.py`, `pipeline.py` | Tick filtering and exact 5-min bar building. |

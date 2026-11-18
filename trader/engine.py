@@ -19,6 +19,7 @@ from collections import namedtuple
 
 from trader import RULES_VERSION
 from trader import rules_v3 as R
+from trader import rules_v4 as V4
 
 OptionSpec = namedtuple("OptionSpec", "symbol strike side qty")
 IndexSpec = namedtuple("IndexSpec", "name symbol step options")
@@ -90,7 +91,7 @@ class _Index(object):
         self.opts = dict((o.symbol, o) for o in spec.options)
         self.open_px = {}
         self.busy = {}
-        self.taken = False
+        self.ntrades = 0
         self.pending = []
         self.eval_next = 0
         self.first_open = None
@@ -101,7 +102,7 @@ class _Index(object):
 
 class Engine(object):
     def __init__(self, store, broker, day, mode="paper", rr=3.0, midday_filter=True, max_hold=12,
-                 notify=None, rules_version=RULES_VERSION, guard=None, capital=None, use_pct=0.9):
+                 notify=None, rules_version=RULES_VERSION, guard=None, capital=None, use_pct=0.9, vix_regime=True):
         self.store = store
         self.broker = broker
         self.day = day
@@ -114,6 +115,10 @@ class Engine(object):
         self.guard = guard
         self.capital = capital          # money per index (None = trade one contract lot, used by replay/tests)
         self.use_pct = use_pct          # share of that money a position may use
+        self.vix_regime = vix_regime    # v4: India VIX at the open sets target / hold / trades per day (no VIX bars = v3 settings)
+        self.max_trades = 1             # per index per day
+        self.regime = None              # decided once per day at the first evaluation
+        self.vix_block = None           # reason string when the VIX rules forbid trading today
         self.block_reason = "backfill"   # recorded as the reason when accepting is False ('late_login' on data-only days)
         self.accepting = True   # False while back-filling history after a late start: no NEW orders, signals recorded as 'missed'
         self._ix = {}      # index name -> _Index
@@ -187,9 +192,38 @@ class Engine(object):
             ix.eval_next += 1
             self._try_resolve(ix)
 
+    def _decide_regime(self):
+        """Once per day, before the first signal is evaluated: India VIX at the 09:15 open -> target / hold / trades (rules_v4).
+        Reads the VIX bars the daemon stores, so a restart decides the same way. No usable VIX open = v3 settings."""
+        self.regime = dict(V4.V3_DEFAULT)
+        vix_open = later = None
+        if self.vix_regime:
+            bars = self.store.get_bars(self.day, "INDIA VIX", "vix")
+            if bars and bars[0]["slot"] <= 1:
+                vix_open = bars[0]["c"]
+                late = [b for b in bars if 2 <= b["slot"] <= 3]
+                later = late[-1]["c"] if late else None
+        reg = V4.regime(vix_open)
+        fell = V4.vix_fell(vix_open, later)
+        self.regime = reg
+        self.rr, self.max_hold, self.max_trades = reg["rr"], reg["hold"], reg["max_trades"]
+        self.rules_version = reg["version"] if vix_open else self.rules_version
+        if not reg["trade"]:
+            self.vix_block = "vix-below-12"
+        elif fell:
+            self.vix_block = "vix-fell-5pct"
+        text = V4.describe(reg, vix_open, fell)
+        if self.store.kv_get("regime-%s" % self.day) is None:
+            self.store.kv_set("regime-%s" % self.day, "%s|%s|%s" % (reg["name"], vix_open, self.vix_block or ""))
+            self.store.event("INFO", "regime", text)
+            if vix_open:
+                self._emit("info", {"text": text})
+
     def _evaluate(self, ix, i):
         if i < EVAL_FIRST or i > EVAL_LAST:
             return
+        if self.regime is None:
+            self._decide_regime()
         six = ix.series[ix.spec.symbol]
         if i not in six.by:
             return
@@ -204,6 +238,9 @@ class Engine(object):
                 continue
             if sig["midday"] and self.midday_filter:
                 self._record(ix, i, opt, "skipped", "midday")
+                continue
+            if self.vix_block:
+                self._record(ix, i, opt, "skipped", self.vix_block)
                 continue
             ix.pending.append({"i": i, "opt": opt, "dirn": dirn})
 
@@ -264,8 +301,10 @@ class Engine(object):
                 why.append("gap-dir")
             if dist > R.MAX_DIST_STEPS:
                 why.append("not-ATM")
-            if not why and ix.taken:
+            if not why and ix.ntrades >= self.max_trades:
                 why.append("already-traded-today")
+            if not why and ix.pos is not None:
+                why.append("position-open")
             if not why and self.guard is not None:
                 ok, reason = self.guard.allow_entry(self.day, self.mode)
                 if not ok:
@@ -277,7 +316,7 @@ class Engine(object):
                 self._record(ix, i, opt, "rejected", ",".join(why), sig, ix.gap, dist)
                 continue
             sig["qty"], sig["index_px"] = qty, ip
-            ix.taken = True
+            ix.ntrades += 1
             self._enter(ix, i, opt, sig, ix.gap, dist)
 
     def _qty(self, opt, entry):
