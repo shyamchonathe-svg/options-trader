@@ -167,3 +167,27 @@ class ExactCandle(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AnalyzeTests(unittest.TestCase):
+    def test_hammer_detail_agrees_with_rule_function(self):
+        import random
+        from trader import rules_v3 as R
+        from trader.analyze import hammer_detail
+        rnd = random.Random(7)
+        for _ in range(400):
+            by, e10 = {}, {}
+            for k in range(8):
+                o = 100 + rnd.uniform(-5, 5)
+                c = o + rnd.uniform(-6, 6)
+                by[k] = {"O": o, "H": max(o, c) + rnd.uniform(0, 4), "L": min(o, c) - rnd.uniform(0, 4), "C": c}
+                e10[k] = 100 + rnd.uniform(-4, 4)
+            self.assertEqual(all(x["ok"] for x in hammer_detail(by, e10, 7)), R.is_hammer(by, e10, 7))
+
+    def test_option_matching_and_slots(self):
+        from trader.analyze import parse_option, slot_of
+        self.assertEqual(parse_option("BFO:SENSEX26N1982100PE"), ("SENSEX", 82100, "PE"))
+        self.assertEqual(parse_option("NFO:NIFTY26NOV25300CE"), ("NIFTY", 25300, "CE"))
+        self.assertEqual(slot_of("09:35"), 4)
+        with self.assertRaises(ValueError):
+            slot_of("09:37")

@@ -19,12 +19,13 @@ MAX_PIN_FAILS = 3
 
 HELP = """Everyday: /status  /positions  /trades  /summary (day report)  /login
 More: /health  /risk  /pause /resume /stop /flat
+Trade analysis: /analyze [date] [HH:MM] [option] [all] [live]   e.g. /analyze 2026-11-18 09:35 NIFTY25300PE
 Technical (for debugging): /debug [status|why|signals|analysis|logs]  /bars <symbol>  /config  /export  /compare
 Settings: /set <key> <value>   keys: %s
 Live orders (code+PIN): /mode shadow|live  /arm live  /disarm   confirm with: /yes <code> [PIN]
 Other: /token <request_token or URL>  /recover  /restart  /note <text>  /ack  /skip  /unskip  /holiday YYYY-MM-DD""" % ", ".join(sorted(RISK_BOUNDS))
 
-COMMANDS = ("debug help start status health positions signals why trades summary compare risk bars config logs replay export "
+COMMANDS = ("analyze debug help start status health positions signals why trades summary compare risk bars config logs replay export "
             "menu pause resume stop flat restart note ack set mode arm disarm token yes login skip unskip holiday recover").split()
 
 
@@ -109,6 +110,24 @@ class Controller(object):
         row = self.store.db.execute("SELECT * FROM health ORDER BY rowid DESC LIMIT 1").fetchone()
         errs = len([e for e in self.store.recent_events(50) if e["level"] == "ERROR"])
         return P.health_text(st, now, errs, None if row is None else row["bars_built"], None if row is None else row["lag_ms"])
+
+    def cmd_analyze(self, args, now):
+        """Re-examine any stored day like a chart: which v3 conditions matched or failed for a candle/option."""
+        from trader.analyze import analyze
+        day, hhmm, flags, rest = now.strftime("%Y-%m-%d"), None, set(), []
+        for a in args:
+            if len(a) == 10 and a[4] == "-":
+                day = a
+            elif ":" in a:
+                hhmm = a
+            elif a.lower() in ("all", "live"):
+                flags.add(a.lower())
+            else:
+                rest.append(a)
+        try:
+            return analyze(self.store, day, hhmm, " ".join(rest) or None, "live" if "live" in flags else "hist", "all" in flags)
+        except ValueError as e:
+            return str(e)
 
     def cmd_debug(self, args, now):
         """Raw, technical views (variable names allowed here only)."""
