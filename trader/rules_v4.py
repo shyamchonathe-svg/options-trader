@@ -3,7 +3,7 @@ Pure functions.  Python 3.6 compatible.
 
 India VIX at the 09:15 open fixes the regime for the whole day (the journal convention, 19 Nov 2026 decision):
   below 12          no trades (poor R:R)
-  12 to 15          target 4R, hold up to 12 candles (60 min), 1 trade per index
+  12 to 15           target 4R, hold up to 12 candles (60 min), up to 2 trades per index
   above 15          target 2R, hold up to 6 candles (30 min), up to 2 trades per index (a new one only after the previous exits)
   unknown / late    v3 settings (3R, 12 candles, 1 trade) - a VIX data failure never blocks trading
 Extra day filter: VIX down more than 5% from its open by 09:30 -> no trades that day.
@@ -23,7 +23,7 @@ def regime(vix_open):
     if vix_open < VIX_LOW:
         return dict(name="low", trade=False, rr=3.0, hold=12, max_trades=0, version=RULES_VERSION)
     if vix_open <= VIX_HIGH:
-        return dict(name="mid", trade=True, rr=4.0, hold=12, max_trades=1, version=RULES_VERSION)
+        return dict(name="mid", trade=True, rr=4.0, hold=12, max_trades=2, version=RULES_VERSION)
     return dict(name="high", trade=True, rr=2.0, hold=6, max_trades=2, version=RULES_VERSION)
 
 

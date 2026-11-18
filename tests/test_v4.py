@@ -13,7 +13,7 @@ class Regime(unittest.TestCase):
     def test_bands(self):
         self.assertFalse(V4.regime(11.99)["trade"])
         m = V4.regime(12.0)
-        self.assertEqual((m["rr"], m["hold"], m["max_trades"]), (4.0, 12, 1))
+        self.assertEqual((m["rr"], m["hold"], m["max_trades"]), (4.0, 12, 2))
         self.assertEqual(V4.regime(15.0)["name"], "mid")
         h = V4.regime(15.01)
         self.assertEqual((h["rr"], h["hold"], h["max_trades"]), (2.0, 6, 2))
@@ -64,13 +64,13 @@ class EngineV4(unittest.TestCase):
         self.assertEqual(sig[8]["reasons"], "position-open")
         self.assertEqual(len(st.trades_for_day(DAY)), 1)
 
-    def test_mid_vix_one_trade_4r(self):
+    def test_mid_vix_two_trades_4r(self):
         eng, st, br = make()
         vix(st, {0: 13.0, 3: 13.0})
         with patched({(5, "CE"): 95.0, (25, "CE"): 95.0}):
-            drive(eng, 40)
-        self.assertEqual((eng.rr, eng.max_hold, eng.max_trades), (4.0, 12, 1))
-        self.assertEqual(len(st.trades_for_day(DAY)), 1)
+            drive(eng, 45)
+        self.assertEqual((eng.rr, eng.max_hold, eng.max_trades), (4.0, 12, 2))
+        self.assertEqual(len(st.trades_for_day(DAY)), 2)
 
     def test_no_vix_falls_back_to_v3(self):
         eng, st, br = make()
