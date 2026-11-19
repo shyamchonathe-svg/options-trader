@@ -19,6 +19,10 @@ HAMMERS = {
     "H4 small hammer":        dict(body=.15, clv=.60, lw=.15, red=2, touch=6, tol=1.003, size=0),
     "H5 strict":              dict(body=.25, clv=.75, lw=.35, red=2, touch=3, tol=1.003, size=1.0),
     "H6 no hammer (baseline)": dict(body=0.0, clv=0.0, lw=0.0, red=2, touch=6, tol=1.003, size=0),
+    # classic hammer shape: small body at the top, lower wick >= half the range, almost no upper wick
+    "H7 classic hammer":       dict(body=.10, bmax=.35, clv=.65, lw=.50, uw=.15, red=2, touch=6, tol=1.003, size=0),
+    "H8 classic, any colour":  dict(body=.05, bmax=.35, clv=.65, lw=.50, uw=.15, red=2, touch=6, tol=1.003, size=0, anycolor=True),
+    "H9 classic (wick 40%)":   dict(body=.10, bmax=.40, clv=.65, lw=.40, uw=.20, red=2, touch=6, tol=1.003, size=0),
 }
 
 
@@ -30,8 +34,11 @@ def _avg_range(by, k, n=10):
 def hammer_ok(by, e10, k, p):
     if k not in by or k - 1 not in by or k - 2 not in by: return False
     h = by[k]; rng = h["H"] - h["L"]
-    if rng <= 0 or h["C"] <= h["O"]: return False
-    if (h["C"] - h["O"]) < p["body"] * rng: return False
+    if rng <= 0: return False
+    if not p.get("anycolor") and h["C"] <= h["O"]: return False
+    body = abs(h["C"] - h["O"])
+    if body < p["body"] * rng or body > p.get("bmax", 1.0) * rng: return False
+    if (h["H"] - max(h["O"], h["C"])) > p.get("uw", 1.0) * rng: return False
     if (h["C"] - h["L"]) / rng < p["clv"]: return False
     if (min(h["O"], h["C"]) - h["L"]) / rng < p["lw"]: return False
     if not any(by[j]["C"] < by[j]["O"] for j in range(k - p["red"], k) if j in by): return False
@@ -142,6 +149,13 @@ def hammer_grid():
                     for size in (0, 1.0):
                         n = "g-ham body%d clv%d wick%d touch%d size%s" % (body * 100, clv * 100, lw * 100, touch, "on" if size else "off")
                         g[n] = dict(body=body, clv=clv, lw=lw, red=2, touch=touch, tol=1.003, size=size)
+    for lw in (.50, .60):
+        for bmax in (.35, .50):
+            for uw in (.10, .20):
+                for touch in (3, 6):
+                    for size in (0, 1.0):
+                        n = "g-ham classic wick%d bodymax%d uwmax%d touch%d size%s" % (lw * 100, bmax * 100, uw * 100, touch, "on" if size else "off")
+                        g[n] = dict(body=.10, bmax=bmax, clv=.65, lw=lw, uw=uw, red=2, touch=touch, tol=1.003, size=size)
     return g
 
 

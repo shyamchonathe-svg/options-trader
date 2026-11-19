@@ -62,9 +62,20 @@ class ResearchTests(unittest.TestCase):
         self.assertFalse(RS._inside(by, 10, 1.5, True))
 
     def test_grids_are_well_formed(self):
-        self.assertGreater(len(RS.hammer_grid()), 50)
+        self.assertGreater(len(RS.hammer_grid()), 130)
         self.assertGreater(len(RS.inside_grid()), 50)
-        for p in RS.hammer_grid().values(): self.assertEqual(set(p), set(RS.HAMMERS["H0 v3 (current)"]))
+        for p in RS.hammer_grid().values(): self.assertTrue(set(RS.HAMMERS["H0 v3 (current)"]) <= set(p))
+
+
+
+class ClassicHammer(unittest.TestCase):
+    def test_classic_shape(self):
+        by = {0: dict(O=10, H=11, L=9, C=9.5), 1: dict(O=9.5, H=10, L=8.5, C=9.0),
+              2: dict(O=9.0, H=9.4, L=7.0, C=9.3)}       # long lower wick, tiny upper wick, small green body
+        e10 = {0: 9, 1: 9, 2: 9}
+        self.assertTrue(RS.hammer_ok(by, e10, 2, RS.HAMMERS["H7 classic hammer"]))
+        fat = {0: by[0], 1: by[1], 2: dict(O=8.5, H=9.4, L=8.0, C=9.3)}   # big body, short wick: not classic
+        self.assertFalse(RS.hammer_ok(fat, e10, 2, RS.HAMMERS["H7 classic hammer"]))
 
 
 if __name__ == "__main__":
