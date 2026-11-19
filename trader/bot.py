@@ -83,5 +83,5 @@ class Bot(object):
                 self.errors = 0
             except Exception as e:
                 self.errors += 1
-                self.store.event("ERROR", "bot", type(e).__name__)
+                self.store.event("ERROR", "bot", "%s: %s" % (type(e).__name__, str(e)[:160]))
                 self.sleep(min(60, 2 ** min(self.errors, 6)))
