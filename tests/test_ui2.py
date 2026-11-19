@@ -51,11 +51,21 @@ class Sizing(unittest.TestCase):
     def test_whole_lots_within_90_percent(self):
         eng, st, br = make(qty=75)
         eng.capital, eng.use_pct = 100000, 0.9
-        self.assertEqual(eng._qty(eng._ix["TST"].opts[CE], 100.0), 75 * 12)    # 90000 / 7500 = 12 lots
-        self.assertEqual(eng._qty(eng._ix["TST"].opts[CE], 118.0), 75 * 10)    # 90000 / 8850 = 10.17 -> 10
-        self.assertEqual(eng._qty(eng._ix["TST"].opts[CE], 1300.0), 0)         # one lot (97,500) is over 90,000
+        self.assertEqual(eng._qty(eng._ix["TST"], eng._ix["TST"].opts[CE], 100.0), 75 * 12)    # 90000 / 7500 = 12 lots
+        self.assertEqual(eng._qty(eng._ix["TST"], eng._ix["TST"].opts[CE], 118.0), 75 * 10)    # 90000 / 8850 = 10.17 -> 10
+        self.assertEqual(eng._qty(eng._ix["TST"], eng._ix["TST"].opts[CE], 1300.0), 0)         # one lot (97,500) is over 90,000
         eng.capital = None
-        self.assertEqual(eng._qty(eng._ix["TST"].opts[CE], 100.0), 75)         # legacy: one lot
+        self.assertEqual(eng._qty(eng._ix["TST"], eng._ix["TST"].opts[CE], 100.0), 75)         # legacy: one lot
+
+    def test_fixed_quantity_and_reduction(self):
+        eng, st, br = make(qty=75)
+        ix = eng._ix["TST"]
+        eng.capital, eng.use_pct = 100000, 0.9
+        eng.fixed_qty = {"TST": 300}
+        self.assertEqual(eng._qty(ix, ix.opts[CE], 100.0), 300)               # always 4 lots when affordable
+        self.assertEqual(eng._qty(ix, ix.opts[CE], 200.0), 300)               # 90000/15000 = 6 lots affordable, want 4
+        self.assertEqual(eng._qty(ix, ix.opts[CE], 400.0), 225)               # 90000/30000 = 3 lots: reduced
+        self.assertEqual(eng._qty(ix, ix.opts[CE], 1300.0), 0)                # cannot afford one lot
 
     def test_trade_uses_sized_qty_and_reports_index_value(self):
         eng, st, br = make(qty=75)

@@ -102,7 +102,7 @@ class _Index(object):
 
 class Engine(object):
     def __init__(self, store, broker, day, mode="paper", rr=3.0, midday_filter=True, max_hold=12,
-                 notify=None, rules_version=RULES_VERSION, guard=None, capital=None, use_pct=0.9, vix_regime=True):
+                 notify=None, rules_version=RULES_VERSION, guard=None, capital=None, use_pct=0.9, vix_regime=True, fixed_qty=None):
         self.store = store
         self.broker = broker
         self.day = day
@@ -115,6 +115,7 @@ class Engine(object):
         self.guard = guard
         self.capital = capital          # money per index (None = trade one contract lot, used by replay/tests)
         self.use_pct = use_pct          # share of that money a position may use
+        self.fixed_qty = dict((k.upper(), int(v)) for k, v in (fixed_qty or {}).items())   # index name -> constant quantity
         self.vix_regime = vix_regime    # v4: India VIX at the open sets target / hold / trades per day (no VIX bars = v3 settings)
         self.max_trades = 1             # per index per day
         self.regime = None              # decided once per day at the first evaluation
@@ -299,7 +300,7 @@ class Engine(object):
             why = []
             if ix.gside and opt.side != ix.gside:
                 why.append("gap-dir")
-            if dist > R.MAX_DIST_STEPS:
+            if dist > (V4.ATM_MAX_STEPS if self.rules_version == V4.RULES_VERSION else R.MAX_DIST_STEPS):
                 why.append("not-ATM")
             if not why and ix.ntrades >= self.max_trades:
                 why.append("already-traded-today")
@@ -309,7 +310,7 @@ class Engine(object):
                 ok, reason = self.guard.allow_entry(self.day, self.mode)
                 if not ok:
                     why.append("risk:" + reason)
-            qty = self._qty(opt, entry)
+            qty = self._qty(ix, opt, entry)
             if not why and qty <= 0:
                 why.append("capital")
             if why:
@@ -319,14 +320,24 @@ class Engine(object):
             ix.ntrades += 1
             self._enter(ix, i, opt, sig, ix.gap, dist)
 
-    def _qty(self, opt, entry):
-        """Fixed-capital sizing: whole lots that fit in use_pct of the per-index capital (0 = cannot afford one lot).
-        opt.qty is the contract's lot size. capital None keeps the old one-lot behaviour."""
+    def _qty(self, ix, opt, entry):
+        """Quantity. With a fixed quantity for this index (v4): always that many, in whole lots, reduced ONLY when the money
+        does not cover it (available = per-index capital x use_pct + today's realised P&L on this index, so a drawdown
+        shrinks it); 0 = cannot afford one lot. Without one: whole lots that fit in use_pct of the capital.
+        opt.qty is the contract's lot size. capital None keeps the old one-lot behaviour (replay / tests)."""
         if self.capital is None:
             return opt.qty
         if entry <= 0 or opt.qty <= 0:
             return 0
-        return int(self.capital * self.use_pct // (entry * opt.qty)) * opt.qty
+        want = self.fixed_qty.get(ix.spec.name.upper())
+        avail = self.capital * self.use_pct
+        if want:
+            avail += sum(t["pnl"] for t in self.store.trades_for_day(self.day)
+                         if t["symbol"] in ix.opts and t["pnl"] is not None)
+        lots = int(max(avail, 0) // (entry * opt.qty))
+        if want:
+            lots = min(lots, int(want // opt.qty))
+        return lots * opt.qty
 
     # ---------------------------------------------------------------- records / orders
     def _emit(self, kind, payload):

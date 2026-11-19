@@ -354,7 +354,8 @@ class Daemon(object):
         env = self.cfg.env if self.cfg else {}
         eng = Engine(self.store, self.broker, self.day, mode="live" if self.state.live_active() else "paper",
                      notify=self._engine_notify, guard=RiskGuard(self.store, self.state),
-                     capital=float(env.get("CAPITAL_PER_INDEX", DEFAULT_CAPITAL)), use_pct=float(env.get("CAPITAL_USE_PCT", DEFAULT_USE_PCT)))
+                     capital=float(env.get("CAPITAL_PER_INDEX", DEFAULT_CAPITAL)), use_pct=float(env.get("CAPITAL_USE_PCT", DEFAULT_USE_PCT)),
+                     fixed_qty={"NIFTY": int(env.get("FIXED_QTY_NIFTY", 390)), "SENSEX": int(env.get("FIXED_QTY_SENSEX", 100))})
         if data_only:
             eng.accepting, eng.block_reason = False, "late_login"
         syms = []

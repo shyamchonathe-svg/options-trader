@@ -79,6 +79,19 @@ class EngineV4(unittest.TestCase):
         self.assertEqual((eng.rr, eng.max_hold, eng.rules_version), (3.0, 12, "v3.0"))
         self.assertEqual(len(st.trades_for_day(DAY)), 1)
 
+    def test_v4_requires_nearest_strike(self):
+        # index 100, strike 100 -> ATM; a strike 1 step (index step 100 in the test spec) away is rejected in v4 but allowed in v3
+        eng, st, br = make(strike=160.0)
+        vix(st, {0: 17.0, 3: 17.0})
+        with patched({(5, "CE"): 95.0}):
+            drive(eng, 20)
+        sig = st.signals_for_day(DAY)
+        self.assertTrue(sig and all(s["reasons"] == "not-ATM" for s in sig if s["status"] == "rejected"))
+        eng2, st2, br2 = make(strike=160.0)
+        with patched({(5, "CE"): 95.0}):
+            drive(eng2, 20)
+        self.assertEqual(len(st2.trades_for_day(DAY)), 1)                     # no VIX = v3: 0.6 step is allowed
+
     def test_restart_decides_the_same(self):
         eng, st, br = make()
         vix(st, {0: 17.0, 3: 17.0})

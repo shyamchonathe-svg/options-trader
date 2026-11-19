@@ -7,12 +7,13 @@ India VIX at the 09:15 open fixes the regime for the whole day (the journal conv
   above 15          target 2R, hold up to 6 candles (30 min), up to 2 trades per index (a new one only after the previous exits)
   unknown / late    v3 settings (3R, 12 candles, 1 trade) - a VIX data failure never blocks trading
 Extra day filter: VIX down more than 5% from its open by 09:30 -> no trades that day.
-Entry, stop and the midday / gap / ATM filters are exactly rules_v3.
+Entry, stop, midday and gap filters are exactly rules_v3; the strike must be the nearest one (ATM_MAX_STEPS, v3 allowed 1.5 steps).
 """
 RULES_VERSION = "v4.0"
 VIX_LOW = 12.0
 VIX_HIGH = 15.0
 VIX_FALL = 0.05
+ATM_MAX_STEPS = 0.5      # v4: only the nearest strike (within half a strike step of the index at the entry candle's open)
 
 V3_DEFAULT = dict(name="unknown", trade=True, rr=3.0, hold=12, max_trades=1, version="v3.0")
 
