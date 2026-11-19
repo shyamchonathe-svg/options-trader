@@ -1,0 +1,9 @@
+# Candles the user considers a good, pure hammer (shape only, EMA conditions ignored). Times are candle START times.
+# symbol-pattern  times...
+BSE:SENSEX             11:20 11:50 13:30 13:35 14:20 15:00
+BFO:SENSEX26N1982300CE 11:20
+BFO:SENSEX26N1982500CE 13:35
+BFO:SENSEX26N1982800CE 14:15 14:20 15:00
+NSE:NIFTY 50           11:20 11:50 14:20 15:00
+NFO:NIFTY26NOV25300CE  11:20
+NFO:NIFTY26NOV25400CE  13:35 13:55 14:15 14:20 15:00
