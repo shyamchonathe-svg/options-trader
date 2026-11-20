@@ -7,13 +7,18 @@ India VIX at the 09:15 open fixes the regime for the whole day (the journal conv
   above 15          target 2R, hold up to 6 candles (30 min), up to 2 trades per index (a new one only after the previous exits)
   unknown / late    v3 settings (3R, 12 candles, 1 trade) - a VIX data failure never blocks trading
 Extra day filter: VIX down more than 5% from its open by 09:30 -> no trades that day.
-Entry, stop, midday and gap filters are exactly rules_v3; the strike must be the nearest one (ATM_MAX_STEPS, v3 allowed 1.5 steps).
+Gap filter (v4.1 change, 20 Nov 2026): the v3 gap-direction rule stands, EXCEPT that once the index has recovered the gap
+(gap-down: trades back up to the previous close; gap-up: back down to it) within the first hour (candles 09:15 to 10:15),
+both sides are allowed again from that candle on. No recovery by 10:15 = the restriction stays all day.
+Entry, stop and midday filters are exactly rules_v3; the strike must be the nearest one (ATM_MAX_STEPS, v3 allowed 1.5 steps).
 """
 RULES_VERSION = "v4.0"
 VIX_LOW = 12.0
 VIX_HIGH = 15.0
 VIX_FALL = 0.05
 ATM_MAX_STEPS = 0.5      # v4: only the nearest strike (within half a strike step of the index at the entry candle's open)
+
+GAP_RECOVERY_LAST_SLOT = 11   # the 10:10-10:15 candle is the last one that can count as "recovered within the first hour"
 
 V3_DEFAULT = dict(name="unknown", trade=True, rr=3.0, hold=12, max_trades=1, version="v3.0")
 
@@ -45,3 +50,19 @@ def describe(reg, vix_open, fell=False):
     kind = "High-volatility day" if reg["name"] == "high" else "Normal-volatility day"
     return head + "%s: target %gR, hold at most %d min, up to %d trade(s) per index." % (
         kind, reg["rr"], reg["hold"] * 5, reg["max_trades"])
+
+
+def gap_lifted(gside, prev_close, bars, i):
+    """True when the gap has been recovered by candle i (inclusive) AND within the first hour.
+    gside: 'CE' (gap-up) or 'PE' (gap-down); bars: the index's candles {slot: {"H":.., "L":..}}; i: the signal candle."""
+    if not gside or not prev_close:
+        return False
+    for k in range(0, min(i, GAP_RECOVERY_LAST_SLOT) + 1):
+        b = bars.get(k)
+        if b is None:
+            continue
+        if gside == "PE" and b["H"] >= prev_close:
+            return True
+        if gside == "CE" and b["L"] <= prev_close:
+            return True
+    return False

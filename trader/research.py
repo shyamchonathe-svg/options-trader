@@ -8,7 +8,7 @@ Setups
   INSIDE family  I1..I4 : big candle + small candle fully inside it, on the option (and on the index), near the crossover.
 Every signal also records CONTEXT: how old the index/option trend is and how far each has already moved.
 """
-from trader import rules_v3 as R
+from trader import rules_v3 as R, rules_v4 as V4
 
 # ---------------------------------------------------------------- hammer formulas
 HAMMERS = {
@@ -188,12 +188,13 @@ def run_case(case, rr=3.0, hammers=None, insides=None, use_gap=True):
         ip = ix.get(i + 1, ix.get(i))["O"]
         dist = abs(ip - strike) / float(case["step"])
         blocked = bool(gside and side != gside)
-        if dist > R.MAX_DIST_STEPS or (use_gap and blocked): return None
+        blocked_rec = blocked and not V4.gap_lifted(gside, case["prev_close"], ix, i)
+        if dist > R.MAX_DIST_STEPS or (use_gap and (blocked_rec if use_gap == "recover" else blocked)): return None
         res, j, why = R.simulate_exit(by, i, sg["entry"], sg["stop"], rr)
         c = context(ix, ie10, ie20, by, e10, e20, i, side)
         c.update(setup=setup, day=case["day"], index=case["index"], name=name, side=side, t=R.tstr(i + 1),
                  slot=i, midday=R.MIDDAY[0] <= R.minute_of(i) <= R.MIDDAY[1], R=res, why=why,
-                 risk_pct=100.0 * (sg["entry"] - sg["stop"]) / sg["entry"], gap_blocked=blocked, gap=gap)
+                 risk_pct=100.0 * (sg["entry"] - sg["stop"]) / sg["entry"], gap_blocked=blocked, gap_blocked_rec=blocked_rec, gap=gap)
         return c
 
     for name, (by, e10, e20, strike, side) in case["opts"].items():

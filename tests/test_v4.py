@@ -100,5 +100,39 @@ class EngineV4(unittest.TestCase):
         self.assertEqual(st.kv_get("regime-%s" % DAY).split("|")[0], "high")
 
 
+class GapRecovery(unittest.TestCase):
+    def test_pure(self):
+        bars = {0: {"H": 100.0, "L": 98.0}, 1: {"H": 100.5, "L": 99.0}, 2: {"H": 101.5, "L": 100.0}}
+        self.assertFalse(V4.gap_lifted("PE", 101.0, bars, 1))       # not back to the previous close yet
+        self.assertTrue(V4.gap_lifted("PE", 101.0, bars, 2))        # recovered on candle 2, signal on candle 2
+        self.assertFalse(V4.gap_lifted(None, 101.0, bars, 2))
+        self.assertTrue(V4.gap_lifted("CE", 99.5, bars, 1))         # gap-up recovered when the low reaches the previous close
+        late = dict(bars)
+        late[12] = {"H": 200.0, "L": 0.0}
+        self.assertFalse(V4.gap_lifted("PE", 150.0, late, 13))      # recovery after 10:15 does not count
+
+    def _run(self, ix):
+        eng, st, br = make(prev_close=101.0)                          # open 100: gap-down 0.99% -> PE only
+        vix(st, {0: 17.0, 3: 17.0})
+        with patched({(5, "CE"): 95.0}):
+            drive(eng, 20, ix=ix)
+        return st
+
+    def test_recovered_within_hour_allows_ce(self):
+        st = self._run(lambda s: (100, 101.5, 99.5, 100) if s >= 3 else (100, 100.5, 99.5, 100))
+        self.assertEqual(len(st.trades_for_day(DAY)), 1)
+
+    def test_not_recovered_stays_blocked(self):
+        st = self._run(lambda s: (100, 100.5, 99.5, 100))
+        self.assertEqual(st.trades_for_day(DAY), [])
+        self.assertEqual(st.signals_for_day(DAY)[0]["reasons"], "gap-dir")
+
+    def test_v3_days_keep_the_old_rule(self):
+        eng, st, br = make(prev_close=101.0)                          # no VIX -> v3 settings: no recovery exception
+        with patched({(5, "CE"): 95.0}):
+            drive(eng, 20, ix=lambda s: (100, 101.5, 99.5, 100))
+        self.assertEqual(st.trades_for_day(DAY), [])
+
+
 if __name__ == "__main__":
     unittest.main()

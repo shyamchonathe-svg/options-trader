@@ -298,7 +298,9 @@ class Engine(object):
             ix.busy[opt.symbol] = i + 1
             dist = abs(ip - opt.strike) / float(ix.spec.step)
             why = []
-            if ix.gside and opt.side != ix.gside:
+            if ix.gside and opt.side != ix.gside and not (
+                    self.rules_version == V4.RULES_VERSION
+                    and V4.gap_lifted(ix.gside, ix.prev_close, ix.series[ix.spec.symbol].by, i)):
                 why.append("gap-dir")
             if dist > (V4.ATM_MAX_STEPS if self.rules_version == V4.RULES_VERSION else R.MAX_DIST_STEPS):
                 why.append("not-ATM")

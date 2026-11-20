@@ -28,6 +28,9 @@ def main(dbs):
         print("\n== %s days ==" % (src or "ALL"))
         al = [r for r in sel if not r["gap_blocked"]]; bl = [r for r in sel if r["gap_blocked"]]
         print(line("allowed by gap rule", al)); print(line("BLOCKED by gap rule", bl))
+        rec = [r for r in sel if r["gap_blocked"] and not r["gap_blocked_rec"]]
+        print(line("  of those, freed by the recovery rule", rec))
+        print(line("  still blocked after recovery rule", [r for r in sel if r["gap_blocked_rec"]]))
         print(line("  blocked, outside midday", [r for r in bl if not r["midday"]]))
         print(line("  allowed, outside midday", [r for r in al if not r["midday"]]))
         big = [r for r in bl if abs(r["gap"]) >= 0.005]
