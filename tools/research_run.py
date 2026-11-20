@@ -67,22 +67,48 @@ def ranking(rows, title, minn=8, top=15):
     return "\n".join(out)
 
 
+def bucket(r):
+    """30-minute bucket of the SIGNAL candle's start time (slot 0 = 09:15)."""
+    m = 9 * 60 + 15 + (r["slot"] // 6) * 30
+    return "%02d:%02d" % (m // 60, m % 60)
+
+
+def by_time(rows, title, setups):
+    """Statistics per time of day, so the best R:R window can be read off. Midday signals are INCLUDED here (research only;
+    the live engine still skips 10:35-13:00 until the numbers justify changing it)."""
+    out = [title, "(signal candle start time, 30-min buckets; one row per option signal; * = fewer than 10 signals, treat as noise)"]
+    for label, filt in setups:
+        sel = [r for r in rows if filt(r)]
+        if not sel: continue
+        out.append("\n%s" % label)
+        out.append("%-7s | %4s %5s %6s %7s | %4s %5s %6s | %4s %5s %6s" % ("time", "n", "win%", "avgR", "sumR", "n", "win%", "avgR", "n", "win%", "avgR"))
+        out.append("%-7s | %-25s | %-17s | %-17s" % ("", "ALL DAYS", "research days", "live days"))
+        for b in sorted(set(bucket(r) for r in sel)):
+            x = [r for r in sel if bucket(r) == b]
+            a = stats(x); rs = stats([r for r in x if r["src"] == "research"]); lv = stats([r for r in x if r["src"] == "live"])
+            out.append("%-7s | %4d %4.0f%% %6.2f %7.1f%s| %4d %4.0f%% %6.2f | %4d %4.0f%% %6.2f" % (
+                b, a[0], a[1], a[2], a[3], "*" if a[0] < 10 else " ", rs[0], rs[1], rs[2], lv[0], lv[1], lv[2]))
+    return "\n".join(out)
+
+
 def main(argv):
-    args = list(argv); out_dir = "."; grid = False; dbs = []
+    args = list(argv); out_dir = "."; grid = False; dbs = []; gap_mode = "recover"
     while args:
         a = args.pop(0)
         if a == "--out": out_dir = args.pop(0)
         elif a == "--grid": grid = True
+        elif a == "--gap": gap_mode = args.pop(0)      # recover (v4, default) | v3 | off
         else: dbs.append(a)
     hammers, insides = dict(RS.HAMMERS), dict(RS.INSIDE)
     if grid:
         hammers.update(RS.hammer_grid()); insides.update(RS.inside_grid())
+    gm = {"recover": "recover", "v3": True, "off": False}[gap_mode]
     rows = []
     for c in fixture_cases():
-        for r in RS.run_case(c, hammers=hammers, insides=insides): r["src"] = "research"; rows.append(r)
+        for r in RS.run_case(c, hammers=hammers, insides=insides, use_gap=gm): r["src"] = "research"; rows.append(r)
     for p in dbs:
         for c in db_cases(p):
-            for r in RS.run_case(c, hammers=hammers, insides=insides): r["src"] = "live"; rows.append(r)
+            for r in RS.run_case(c, hammers=hammers, insides=insides, use_gap=gm): r["src"] = "live"; rows.append(r)
     named = [r for r in rows if not r["setup"].startswith("g-")]
     ndays = len(set(r["day"] for r in rows if r["src"] == "live"))
     L = []
@@ -90,6 +116,7 @@ def main(argv):
     L.append("every signal counted per option (no one-trade-per-day cap), so n is bigger than the real trade count.")
     L.append("Signals inside the 10:35-13:00 window ARE included here (v3 skips them); see the 'midday' split.")
     L.append("Data: research days (screenshot-derived, for discovery) + %d live day(s) (exact candles, for verification).\n" % ndays)
+    L.append("Gap filter in this report: %s (recover = v4: restriction lifted once the gap is recovered within the first hour)\n" % gap_mode)
     L.append(RS.summarize(named, "ALL SIGNALS (both data sets)"))
     for src in ("research", "live"):
         if any(r["src"] == src for r in named):
@@ -100,6 +127,10 @@ def main(argv):
     L.append("\n" + RS.summarize(named, "INDEX HAS MOVED A LOT (>=0.20%) - later legs", lambda r: r["idx_move"] >= 0.20))
     L.append("\n" + RS.summarize(named, "OPTION ALREADY UP >=50% since its trend began", lambda r: r["opt_move"] >= 50))
     L.append("\n" + RS.summarize(named, "OPTION UP <50%", lambda r: r["opt_move"] < 50))
+    L.append("\n" + by_time(named, "BEST TIME OF DAY (R per trade, same 3R / 12-candle exit)", [
+        ("H0 v3 hammer", lambda r: r["setup"] == "H0 v3 (current)"),
+        ("H6 no-hammer baseline (EMA conditions only)", lambda r: r["setup"].startswith("H6")),
+        ("ALL named formulas pooled", lambda r: True)]))
     if grid:
         gh = [r for r in rows if r["setup"].startswith("g-ham")]; gi = [r for r in rows if r["setup"].startswith("g-ins")]
         L.append("\n" + ranking(gh, "GRID - HAMMER FORMULAS (top 15)"))
