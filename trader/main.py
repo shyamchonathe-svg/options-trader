@@ -97,7 +97,7 @@ def _loop(daemon, bot, store, notifier, state, sleep, clock, max_loops):
             try:
                 bot.poll_once(timeout=1)
             except Exception as e:
-                store.event("ERROR", "bot", type(e).__name__)
+                store.event("ERROR", "bot", "%s: %s" % (type(e).__name__, str(e)[:160]))
                 backoff_until = time.time() + 30
                 sleep(1)
         else:
