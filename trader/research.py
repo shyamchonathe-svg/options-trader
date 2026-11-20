@@ -173,7 +173,7 @@ def inside_grid():
 
 
 # ---------------------------------------------------------------- driver
-def run_case(case, rr=3.0, hammers=None, insides=None):
+def run_case(case, rr=3.0, hammers=None, insides=None, use_gap=True):
     """case: dict(day, index, step, prev_close, ix=(by,e10,e20), opts={name:(by,e10,e20,strike,side)}).
     Returns list of result rows (one per signal) for every setup."""
     ix, ie10, ie20 = case["ix"]
@@ -187,12 +187,13 @@ def run_case(case, rr=3.0, hammers=None, insides=None):
         i = sg["i"]
         ip = ix.get(i + 1, ix.get(i))["O"]
         dist = abs(ip - strike) / float(case["step"])
-        if dist > R.MAX_DIST_STEPS or (gside and side != gside): return None
+        blocked = bool(gside and side != gside)
+        if dist > R.MAX_DIST_STEPS or (use_gap and blocked): return None
         res, j, why = R.simulate_exit(by, i, sg["entry"], sg["stop"], rr)
         c = context(ix, ie10, ie20, by, e10, e20, i, side)
         c.update(setup=setup, day=case["day"], index=case["index"], name=name, side=side, t=R.tstr(i + 1),
                  slot=i, midday=R.MIDDAY[0] <= R.minute_of(i) <= R.MIDDAY[1], R=res, why=why,
-                 risk_pct=100.0 * (sg["entry"] - sg["stop"]) / sg["entry"])
+                 risk_pct=100.0 * (sg["entry"] - sg["stop"]) / sg["entry"], gap_blocked=blocked, gap=gap)
         return c
 
     for name, (by, e10, e20, strike, side) in case["opts"].items():
