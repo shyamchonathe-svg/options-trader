@@ -29,7 +29,18 @@ class Store(object):
         if path != ":memory:":
             self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
+        self._migrate()
         self.db.commit()
+
+    def _migrate(self):
+        """Additive column migrations (v5): which setup produced a signal; the partial booking of a trade."""
+        def cols(t):
+            return set(r[1] for r in self.db.execute("PRAGMA table_info(%s)" % t))
+        if "setup" not in cols("signals"):
+            self.db.execute("ALTER TABLE signals ADD COLUMN setup TEXT")
+        for c, typ in (("part_qty", "INTEGER"), ("part_px", "REAL"), ("part_t", "TEXT")):
+            if c not in cols("trades"):
+                self.db.execute("ALTER TABLE trades ADD COLUMN %s %s" % (c, typ))
 
     def put_bar(self, day, symbol, slot, o, h, l, c, n=0, src="live"):
         self.db.execute("INSERT OR REPLACE INTO bars VALUES(?,?,?,?,?,?,?,?,?)", (day, symbol, slot, o, h, l, c, n, src))
@@ -40,14 +51,14 @@ class Store(object):
         return [dict(r) for r in cur.fetchall()]
 
     def add_signal(self, day, symbol, slot, side, status, reasons="", entry=None, stop=None, target=None,
-                   rules_version="v3.0", gap=None, dist=None):
+                   rules_version="v3.0", gap=None, dist=None, setup=None):
         """Idempotent: a (day,symbol,slot) signal is stored once. Returns (id, created)."""
         cur = self.db.execute("SELECT id FROM signals WHERE day=? AND symbol=? AND slot=?", (day, symbol, slot))
         row = cur.fetchone()
         if row: return row["id"], False
-        cur = self.db.execute("INSERT INTO signals(day,symbol,slot,side,status,reasons,entry,stop,target,rules_version,gap,dist)"
-                              " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                              (day, symbol, slot, side, status, reasons, entry, stop, target, rules_version, gap, dist))
+        cur = self.db.execute("INSERT INTO signals(day,symbol,slot,side,status,reasons,entry,stop,target,rules_version,gap,dist,setup)"
+                              " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                              (day, symbol, slot, side, status, reasons, entry, stop, target, rules_version, gap, dist, setup))
         self.db.commit()
         return cur.lastrowid, True
 
@@ -68,6 +79,19 @@ class Store(object):
         self.db.execute("UPDATE trades SET exit_t=?,exit_px=?,exit_reason=?,r_mult=?,pnl=? WHERE id=?",
                         (exit_t, exit_px, reason, r_mult, pnl, trade_id))
         self.db.commit()
+
+    def book_partial(self, trade_id, t, px, qty):
+        """Record the partial exit of a trade (once). Returns False when it was already recorded (restart / re-feed)."""
+        r = self.db.execute("SELECT part_t FROM trades WHERE id=?", (trade_id,)).fetchone()
+        if r is None or r["part_t"] is not None:
+            return False
+        self.db.execute("UPDATE trades SET part_t=?, part_px=?, part_qty=? WHERE id=?", (t, px, qty, trade_id))
+        self.db.commit()
+        return True
+
+    def get_trade(self, trade_id):
+        r = self.db.execute("SELECT * FROM trades WHERE id=?", (trade_id,)).fetchone()
+        return dict(r) if r else None
 
     def trade_for_signal(self, signal_id):
         r = self.db.execute("SELECT * FROM trades WHERE signal_id=?", (signal_id,)).fetchone()

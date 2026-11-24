@@ -9,7 +9,7 @@ FIX_WAIT_S = 60        # how long a closed bar may wait for its exact exchange c
 FIX_SETTLE_S = 3       # never ask for a candle earlier than this after its bar closed (let the exchange finalise it)
 FIX_RETRY_S = 4        # candle not published yet: ask again after this many seconds
 FIX_CALLS_PER_STEP = 2  # Kite history limit is 3 requests/second; the daemon steps about once a second
-NEAR_STEPS = 2.5       # only strikes this close to the index can ever be traded (rule: within 1.5 steps)
+NEAR_STEPS = 3.5       # only strikes this close to the index can ever be traded (pullback 0.5 steps, reversal up to 3)
 
 
 class Pipeline(object):
@@ -116,6 +116,8 @@ class Pipeline(object):
         self.last_tick_ts = tick.ts
         if b.cur is not None and b.cur["slot"] != before:
             self.engine.on_open(tick.symbol, b.cur["slot"], tick.price)
+        elif b.cur is not None:
+            self.engine.on_price(tick.symbol, b.cur["slot"], tick.price)
         self._bars(tick.symbol, closed)
 
     def close_due(self, now):

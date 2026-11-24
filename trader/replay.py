@@ -9,12 +9,12 @@ def _strike_side(name):
     return R.parse_strike(name)
 
 
-def run_dataset(store, broker, ds, qty=1, rr=3.0, midday_filter=True, notify=None, mode="paper"):
+def run_dataset(store, broker, ds, qty=1, rr=3.0, midday_filter=True, notify=None, mode="paper", strategy="v3"):
     ixn = ds["index"]
     ix_sym = ixn + "_index"
     opts = [OptionSpec(n, float(_strike_side(n)[0]), _strike_side(n)[1], qty) for n in sorted(ds["opts"])]
     spec = IndexSpec(ixn, ix_sym, ds["step"], opts)
-    eng = Engine(store, broker, ds["day"], mode=mode, rr=rr, midday_filter=midday_filter, notify=notify)
+    eng = Engine(store, broker, ds["day"], mode=mode, rr=rr, midday_filter=midday_filter, notify=notify, strategy=strategy)
     series = {ix_sym: ds["idx"]}
     series.update(ds["opts"])
     eng.add_index(spec, ds["prev_close"], dict((k, v["seed"]) for k, v in series.items()))

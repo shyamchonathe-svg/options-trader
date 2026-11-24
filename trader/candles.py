@@ -73,11 +73,18 @@ class BarBuilder(object):
 
     def close_due(self, now):
         """Timer path: close the open bar once now >= slot end + grace. Returns list (0 or 1 bars)."""
-        if self.cur is None: return []
-        if now >= slot_end(now, self.cur["slot"]) + datetime.timedelta(seconds=GRACE_S):
-            b = self._emit(self.cur); self.cur = None
-            return [b]
-        return []
+        out = []
+        if self.cur is not None and now >= slot_end(now, self.cur["slot"]) + datetime.timedelta(seconds=GRACE_S):
+            out.append(self._emit(self.cur)); self.cur = None
+        if self.cur is None and self.last_close is not None and self.closed_slot >= 0:
+            # An illiquid strike may not tick for many minutes. Its flat bars must not wait for its next tick,
+            # or the engine (which needs every series of the index to reach a slot) stalls for everyone.
+            t = now - datetime.timedelta(seconds=GRACE_S)
+            done = min((t.hour * 60 + t.minute - OPEN_MIN) // 5 - 1, LAST_SLOT)   # last slot ended + grace
+            day = now.strftime("%Y-%m-%d")
+            for g in range(self.closed_slot + 1, done + 1):
+                out.append(self._emit(self._flat(day, g), "flat"))
+        return out
 
     def flush(self):
         """End of day: close whatever is open."""

@@ -61,5 +61,20 @@ class T(unittest.TestCase):
         out = b.on_tick(t(9, 30), 110)                           # slots 1,2 never traded
         self.assertEqual([x["slot"] for x in out], [1, 2]); self.assertEqual(out[0]["src"], "flat")
 
+    def test_timer_fills_flat_bars_without_a_tick(self):
+        # illiquid strike: no ticks after slot 0 -> flat bars must come from the timer, not wait for the next tick
+        b = c.BarBuilder("X")
+        b.on_tick(t(9, 15), 100)
+        self.assertEqual([x["slot"] for x in b.close_due(t(9, 20, 3))], [0])
+        self.assertEqual(b.close_due(t(9, 25, 1)), [])                        # slot 1 ended 1s ago: inside grace
+        out = b.close_due(t(9, 25, 3))
+        self.assertEqual([(x["slot"], x["src"], x["C"]) for x in out], [(1, "flat", 100)])
+        self.assertEqual(b.close_due(t(9, 25, 4)), [])                        # not repeated
+        out = b.close_due(t(9, 40, 3))
+        self.assertEqual([x["slot"] for x in out], [2, 3, 4])
+        self.assertEqual(b.on_tick(t(9, 41), 120), [])                        # new tick starts slot 5 normally
+        self.assertEqual(b.cur["slot"], 5)
+
+
 if __name__ == "__main__":
     unittest.main()

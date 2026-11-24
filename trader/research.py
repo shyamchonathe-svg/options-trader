@@ -13,7 +13,8 @@ from trader import rules_v3 as R, rules_v4 as V4
 # ---------------------------------------------------------------- hammer formulas
 HAMMERS = {
     "H0 v3 (current)":        dict(body=.30, clv=.65, lw=.25, red=2, touch=6, tol=1.003, size=0),
-    "H1 v3 + min size":       dict(body=.30, clv=.65, lw=.25, red=2, touch=6, tol=1.003, size=1.0),
+    "H1 v3 + min size":       dict(body=.30, clv=.65, lw=.25, red=2, touch=6, tol=1.003, size=1.0, spike=2.0),
+    "P1 H1 + float<0.5 (old-trend = log flag)": dict(body=.30, clv=.65, lw=.25, red=2, touch=6, tol=1.003, size=1.0, spike=2.0, floatgap=0.5),
     "H2 touch EMA10 now":     dict(body=.30, clv=.65, lw=.25, red=2, touch=2, tol=1.003, size=0),
     "H3 long wick (40%)":     dict(body=.30, clv=.65, lw=.40, red=2, touch=6, tol=1.003, size=0),
     "H4 small hammer":        dict(body=.15, clv=.60, lw=.15, red=2, touch=6, tol=1.003, size=0),
@@ -26,9 +27,16 @@ HAMMERS = {
 }
 
 
-def _avg_range(by, k, n=10):
+def _avg_range(by, k, n=10, spike=0):
+    """Mean range of the previous n candles. spike>0: candles bigger than spike x the window median are
+    left out, so one big candle just before a hammer cannot inflate the reference (H1)."""
     v = [by[j]["H"] - by[j]["L"] for j in range(k - n, k) if j in by]
-    return sum(v) / float(len(v)) if v else 0.0
+    if not v: return 0.0
+    if spike:
+        m = sorted(v)[len(v) // 2] if len(v) % 2 else sum(sorted(v)[len(v) // 2 - 1:len(v) // 2 + 1]) / 2.0
+        w = [x for x in v if x <= spike * m]
+        v = w or v
+    return sum(v) / float(len(v))
 
 
 def hammer_ok(by, e10, k, p):
@@ -44,7 +52,7 @@ def hammer_ok(by, e10, k, p):
     if not any(by[j]["C"] < by[j]["O"] for j in range(k - p["red"], k) if j in by): return False
     lows = [by[j]["L"] for j in range(k - p["touch"] + 1, k + 1) if j in by]
     if min(lows) > e10[k] * p["tol"]: return False
-    if p["size"] and rng < p["size"] * _avg_range(by, k): return False
+    if p["size"] and rng < p["size"] * _avg_range(by, k, spike=p.get("spike", 0)): return False
     return True
 
 
@@ -73,6 +81,21 @@ def context(ix, ie10, ie20, by, e10, e20, i, side):
 
 
 # ---------------------------------------------------------------- setups
+def ema_age(by, e10, e20, i, tol=1.003):
+    """Age of the move: candles since a candle LOW last touched EMA20.  A real pullback (A, B) dips to EMA20, so
+    it resets the age; a slow trend that only hugs EMA10 (C1) never does, so it keeps ageing."""
+    j = i
+    while j - 1 >= 0 and j - 1 in by and by[j - 1]["L"] > e20[j - 1] * tol: j -= 1
+    return i - j
+
+
+def float_gap(by, e10, e20, i):
+    """How far the WHOLE candle floats above both EMAs, in average-candle sizes (0 if it still touches one)."""
+    lo = by[i]["L"] - max(e10[i], e20[i])
+    av = _avg_range(by, i, spike=2.0)
+    return max(lo, 0.0) / av if av > 0 else 0.0
+
+
 def hammer_signal(i, by, e10, e20, dirn, side, p, rr=3.0):
     """v3 signal_at with a swappable hammer formula.  Returns dict(i, entry, stop, entry_slot) or None."""
     if i < 3 or i not in by or i - 1 not in by or i + 1 not in by: return None
@@ -84,11 +107,69 @@ def hammer_signal(i, by, e10, e20, dirn, side, p, rr=3.0):
     avg = sum(abs(by[j]["C"] - by[j]["O"]) for j in range(i - 5, i) if j in by) / 5.0
     if hk != i and abs(b["C"] - b["O"]) < 0.8 * avg: return None
     if R.minute_of(i) > R.LAST_ENTRY_MIN: return None
+    if p.get("young") and ema_age(by, e10, e20, i) >= p["young"]: return None          # C1: old slow trend = exhaustion
+    if p.get("floatgap") and float_gap(by, e10, e20, i) >= p["floatgap"]: return None   # C2: starting to float
     entry, stop = by[i + 1]["O"], b["O"]
     rng10 = sum(by[j]["H"] - by[j]["L"] for j in range(i - 9, i + 1) if j in by) / 10.0
     if entry - stop < 0.5 * rng10: stop = by[hk]["L"]
     if entry - stop <= 0: return None
     return dict(i=i, entry=entry, stop=stop)
+
+
+REVERSAL = {
+    # hammer at k (long lower wick), strong follow-up candle i=k+1; entry open of i+1; stop = low of the follow-up.
+    "RV-AM morning":   dict(mode="am", first=1, last=7,  lw=.60, uw=.20, body_f=.60, big_f=1.5, near=.5, hold=3, book=2),
+    "RV-PM afternoon": dict(mode="pm", first=58, last=68, lw=.50, uw=.20, body_f=.60, big_f=1.5, near=.5, hold=6, book=3),
+}
+
+
+def reversal_exit(p):
+    def run(by, i, entry, stop, rr=None):
+        R_ = entry - stop; e = i + 1; trail = stop; booked = False; part = 0.0; last = None
+        for n in range(p["hold"]):
+            j = e + n
+            if j not in by: break
+            b = by[j]; last = j
+            if b["L"] <= trail:
+                if not booked: return -1.0, j, "stop"
+                r = 0.5 * part + 0.5 * (trail - entry) / R_
+                return r, j, ("target" if r > 0 else "stop")
+            if not booked and n + 1 == p["book"]:
+                part = (b["C"] - entry) / R_; booked = True
+            if booked: trail = max(trail, b["L"])          # aggressive: stop moves to the low of the candle just closed
+        if last is None: return 0.0, e, "time"
+        c = (by[last]["C"] - entry) / R_
+        r = 0.5 * part + 0.5 * c if booked else c
+        return r, last, ("target" if r > 0 else "time")
+    return run
+
+
+def reversal_signal(i, by, e10, e20, p, rr=3.0):
+    k = i - 1
+    if k < 0 or k not in by or i not in by or i + 1 not in by: return None
+    if not (p["first"] <= i <= p["last"]): return None
+    h, f = by[k], by[i]
+    rh, rf = h["H"] - h["L"], f["H"] - f["L"]
+    if rh <= 0 or rf <= 0: return None
+    top = max(h["O"], h["C"])
+    if (min(h["O"], h["C"]) - h["L"]) / rh < p["lw"] or (h["H"] - top) / rh > p["uw"]: return None
+    lo_k, hi_k = min(e10[k], e20[k]), max(e10[k], e20[k])
+    lo_i, hi_i = min(e10[i], e20[i]), max(e10[i], e20[i])
+    if p["mode"] == "am":
+        if h["H"] >= lo_k: return None                       # the hammer must be WAY below both EMAs
+    else:
+        if k - 6 < 0 or abs(e20[k] - e20[k - 6]) / e20[k] > 0.004 or (hi_k - lo_k) / e20[k] > 0.006: return None   # EMAs sideways
+        if h["L"] >= lo_k: return None
+    if f["C"] <= f["O"] or abs(f["C"] - f["O"]) < p["body_f"] * rf: return None
+    prev = [by[j]["H"] - by[j]["L"] for j in range(i - 10, i) if j in by]
+    if len(prev) >= 5 and rf < p["big_f"] * _avg_range(by, i, spike=2.0): return None
+    if p["mode"] == "am":
+        dist = 0.0 if lo_i <= f["C"] <= hi_i else min(abs(f["C"] - lo_i), abs(f["C"] - hi_i))
+        if dist > p["near"] * rf: return None                # closes close to the EMAs
+    elif f["C"] <= hi_i: return None                         # must close above the EMAs
+    entry, stop = by[i + 1]["O"], f["L"]
+    if entry - stop <= 0: return None
+    return dict(i=i, entry=entry, stop=stop, exit=reversal_exit(p), nogap=True)
 
 
 INSIDE = {
@@ -173,7 +254,7 @@ def inside_grid():
 
 
 # ---------------------------------------------------------------- driver
-def run_case(case, rr=3.0, hammers=None, insides=None, use_gap=True):
+def run_case(case, rr=3.0, hammers=None, insides=None, use_gap=True, reversals=None):
     """case: dict(day, index, step, prev_close, ix=(by,e10,e20), opts={name:(by,e10,e20,strike,side)}).
     Returns list of result rows (one per signal) for every setup."""
     ix, ie10, ie20 = case["ix"]
@@ -182,17 +263,18 @@ def run_case(case, rr=3.0, hammers=None, insides=None, use_gap=True):
     rows = []
     hammers = HAMMERS if hammers is None else hammers
     insides = INSIDE if insides is None else insides
+    reversals = {} if reversals is None else reversals
 
     def finish(setup, name, strike, side, by, e10, e20, sg):
         i = sg["i"]
         ip = ix.get(i + 1, ix.get(i))["O"]
         dist = abs(ip - strike) / float(case["step"])
-        blocked = bool(gside and side != gside)
+        blocked = bool(gside and side != gside) and not sg.get("nogap")   # reversals trade AGAINST a gap on purpose
         blocked_rec = blocked and not V4.gap_lifted(gside, case["prev_close"], ix, i)
         if dist > R.MAX_DIST_STEPS or (use_gap and (blocked_rec if use_gap == "recover" else blocked)): return None
-        res, j, why = R.simulate_exit(by, i, sg["entry"], sg["stop"], rr)
+        res, j, why = (sg["exit"] if "exit" in sg else R.simulate_exit)(by, i, sg["entry"], sg["stop"], rr)
         c = context(ix, ie10, ie20, by, e10, e20, i, side)
-        c.update(setup=setup, day=case["day"], index=case["index"], name=name, side=side, t=R.tstr(i + 1),
+        c.update(old_age=ema_age(by, e10, e20, i), old_flag=ema_age(by, e10, e20, i) >= 10, setup=setup, day=case["day"], index=case["index"], name=name, side=side, t=R.tstr(i + 1),
                  slot=i, midday=R.MIDDAY[0] <= R.minute_of(i) <= R.MIDDAY[1], R=res, why=why,
                  risk_pct=100.0 * (sg["entry"] - sg["stop"]) / sg["entry"], gap_blocked=blocked, gap_blocked_rec=blocked_rec, gap=gap)
         return c
@@ -207,6 +289,15 @@ def run_case(case, rr=3.0, hammers=None, insides=None, use_gap=True):
                 if not sg: continue
                 r = finish(setup, name, strike, side, by, e10, e20, sg)
                 busy = i + 1
+                if r: rows.append(r)
+        for setup, p in reversals.items():
+            busy = -1
+            for i in range(1, 69):
+                if i <= busy or i not in by or i not in ix: continue
+                sg = reversal_signal(i, by, e10, e20, p, rr)
+                if not sg: continue
+                r = finish(setup, name, strike, side, by, e10, e20, sg)
+                busy = i + p["hold"] + 1
                 if r: rows.append(r)
         for setup, p in insides.items():
             busy = -1

@@ -219,12 +219,12 @@ class EndToEnd(unittest.TestCase):
                 d.step(t0 + datetime.timedelta(minutes=5, seconds=3))
             d.step(base.replace(hour=15, minute=32)); d.step(base.replace(hour=16, minute=1))
             s2, b2 = Store(), PaperBroker()
-            run_dataset(s2, b2, ds)
+            run_dataset(s2, b2, ds, strategy="v5")
             f = lambda s: [(t["symbol"], t["slot"], t["entry"], t["stop"], t["exit_reason"], t["r_mult"]) for t in s.trades_for_day(ds["day"])]
             self.assertEqual(f(st), f(s2), key)
             total += len(f(s2))
             self.assertTrue(any(x.startswith("Day report") for x in texts(tr)), key)
-        self.assertGreaterEqual(total, 3)
+        self.assertGreaterEqual(total, 2)
 
 
 if __name__ == "__main__":

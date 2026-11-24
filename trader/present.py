@@ -4,7 +4,7 @@ import re
 
 _SYM = re.compile(r"^(?:[A-Z]+:)?(NIFTY|SENSEX)(?:\d{2}[1-9OND]\d{2}|\d{2}[A-Z]{3})(\d+)(CE|PE)$")
 _NAMES = {"NIFTY": "Nifty", "SENSEX": "Sensex"}
-_REASONS = {"stop": "stop-loss hit", "target": "profit target hit", "time": "time limit (1 hour) reached",
+_REASONS = {"stop": "stop-loss hit", "target": "profit target hit", "time": "time limit reached", "trail": "trailing stop hit",
             "eod": "market close", "flat": "closed manually", "manual": "closed manually"}
 
 
