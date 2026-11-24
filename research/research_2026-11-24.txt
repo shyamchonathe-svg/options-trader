@@ -1,0 +1,262 @@
+SHADOW RESEARCH - nothing here was traded. Same 3R / 12-candle exit for every setup, ATM + gap filters applied,
+every signal counted per option (no one-trade-per-day cap), so n is bigger than the real trade count.
+Signals inside the 10:35-13:00 window ARE included here (v3 skips them); see the 'midday' split.
+Data: research days (screenshot-derived, for discovery) + 4 live day(s) (exact candles, for verification).
+
+Gap filter in this report: recover (recover = v4: restriction lifted once the gap is recovered within the first hour)
+
+ALL SIGNALS (both data sets)
+setup                                       n  win stop time   win%    avgR    sumR
+H0 v3 (current)                           152   40   90   22    26%    0.34    51.9
+H1 v3 + min size                           60   16   31   13    27%    0.45    26.9
+H2 touch EMA10 now                        138   35   81   22    25%    0.33    45.9
+H3 long wick (40%)                         64   22   28   14    34%    0.80    51.4
+H4 small hammer                           236   67  141   28    28%    0.38    89.3
+H5 strict                                  22    6    9    7    27%    0.50    10.9
+H6 no hammer (baseline)                   459  148  265   46    32%    0.50   228.4
+H7 classic hammer                          28    8   17    3    29%    0.42    11.8
+H8 classic, any colour                     40   12   25    3    30%    0.39    15.8
+H9 classic (wick 40%)                      49   16   25    8    33%    0.73    35.8
+I1 option only, near cross                  2    0    2    0     0%   -1.00    -2.0
+I2 option+index, near cross                 1    0    1    0     0%   -1.00    -1.0
+I3 option+index, any time                   5    1    4    0    20%   -0.20    -1.0
+I4 option+index, near cross, wide stop      1    0    0    1     0%    0.15     0.2
+I5 option only, any time                   10    2    8    0    20%   -0.20    -2.0
+I6 option+index(any size), any time         6    2    4    0    33%    0.33     2.0
+P1 H1 + float<0.5 (old-trend = log flag)   51   15   29    7    29%    0.51    26.0
+
+ONLY RESEARCH DAYS
+setup                                       n  win stop time   win%    avgR    sumR
+H0 v3 (current)                            44   15   28    1    34%    0.40    17.8
+H1 v3 + min size                           16    6    9    1    38%    0.61     9.8
+H2 touch EMA10 now                         36   10   25    1    28%    0.16     5.8
+H3 long wick (40%)                         18    9    9    0    50%    1.00    18.0
+H4 small hammer                            68   23   40    5    34%    0.49    33.5
+H5 strict                                   6    3    3    0    50%    1.00     6.0
+H6 no hammer (baseline)                   133   42   82    9    32%    0.38    50.3
+H7 classic hammer                           7    2    4    1    29%    0.59     4.1
+H8 classic, any colour                     11    3    7    1    27%    0.37     4.1
+H9 classic (wick 40%)                      15    6    8    1    40%    0.81    12.1
+I1 option only, near cross                  2    0    2    0     0%   -1.00    -2.0
+I2 option+index, near cross                 1    0    1    0     0%   -1.00    -1.0
+I3 option+index, any time                   2    1    1    0    50%    1.00     2.0
+I4 option+index, near cross, wide stop      1    0    0    1     0%    0.15     0.2
+I5 option only, any time                    4    2    2    0    50%    1.00     4.0
+I6 option+index(any size), any time         3    2    1    0    67%    1.67     5.0
+P1 H1 + float<0.5 (old-trend = log flag)   13    5    7    1    38%    0.68     8.8
+
+ONLY LIVE DAYS
+setup                                       n  win stop time   win%    avgR    sumR
+H0 v3 (current)                           108   25   62   21    23%    0.32    34.1
+H1 v3 + min size                           44   10   22   12    23%    0.39    17.1
+H2 touch EMA10 now                        102   25   56   21    25%    0.39    40.1
+H3 long wick (40%)                         46   13   19   14    28%    0.73    33.4
+H4 small hammer                           168   44  101   23    26%    0.33    55.8
+H5 strict                                  16    3    6    7    19%    0.31     4.9
+H6 no hammer (baseline)                   326  106  183   37    33%    0.55   178.2
+H7 classic hammer                          21    6   13    2    29%    0.37     7.7
+H8 classic, any colour                     29    9   18    2    31%    0.40    11.7
+H9 classic (wick 40%)                      34   10   17    7    29%    0.70    23.7
+I3 option+index, any time                   3    0    3    0     0%   -1.00    -3.0
+I5 option only, any time                    6    0    6    0     0%   -1.00    -6.0
+I6 option+index(any size), any time         3    0    3    0     0%   -1.00    -3.0
+P1 H1 + float<0.5 (old-trend = log flag)   38   10   22    6    26%    0.45    17.2
+
+OUTSIDE 10:35-13:00 (what v3 could actually take)
+setup                                       n  win stop time   win%    avgR    sumR
+H0 v3 (current)                            81   16   54   11    20%    0.10     8.0
+H1 v3 + min size                           34    5   26    3    15%   -0.24    -8.2
+H2 touch EMA10 now                         68   12   45   11    18%    0.07     5.0
+H3 long wick (40%)                         33   10   15    8    30%    0.79    26.2
+H4 small hammer                           120   32   74   14    27%    0.33    39.2
+H5 strict                                  13    2    9    2    15%   -0.08    -1.0
+H6 no hammer (baseline)                   225   65  137   23    29%    0.38    85.9
+H7 classic hammer                          16    4    9    3    25%    0.49     7.8
+H8 classic, any colour                     23    6   14    3    26%    0.38     8.8
+H9 classic (wick 40%)                      29    9   13    7    31%    0.93    26.8
+I1 option only, near cross                  2    0    2    0     0%   -1.00    -2.0
+I2 option+index, near cross                 1    0    1    0     0%   -1.00    -1.0
+I3 option+index, any time                   5    1    4    0    20%   -0.20    -1.0
+I4 option+index, near cross, wide stop      1    0    0    1     0%    0.15     0.2
+I5 option only, any time                   10    2    8    0    20%   -0.20    -2.0
+I6 option+index(any size), any time         6    2    4    0    33%    0.33     2.0
+P1 H1 + float<0.5 (old-trend = log flag)   31    4   24    3    13%   -0.30    -9.2
+
+INSIDE 10:35-13:00 (blocked in v3)
+setup                                       n  win stop time   win%    avgR    sumR
+H0 v3 (current)                            71   24   36   11    34%    0.62    44.0
+H1 v3 + min size                           26   11    5   10    42%    1.35    35.1
+H2 touch EMA10 now                         70   23   36   11    33%    0.59    41.0
+H3 long wick (40%)                         31   12   13    6    39%    0.81    25.2
+H4 small hammer                           116   35   67   14    30%    0.43    50.2
+H5 strict                                   9    4    0    5    44%    1.32    11.9
+H6 no hammer (baseline)                   234   83  128   23    35%    0.61   142.6
+H7 classic hammer                          12    4    8    0    33%    0.33     4.0
+H8 classic, any colour                     17    6   11    0    35%    0.41     7.0
+H9 classic (wick 40%)                      20    7   12    1    35%    0.45     8.9
+P1 H1 + float<0.5 (old-trend = log flag)   20   11    5    4    55%    1.76    35.2
+
+INDEX HAS MOVED LITTLE (<0.20% since the trend began) - early/first leg
+setup                                       n  win stop time   win%    avgR    sumR
+H0 v3 (current)                            34    7   19    8    21%    0.39    13.2
+H1 v3 + min size                            7    3    4    0    43%    0.71     5.0
+H2 touch EMA10 now                         27    6   13    8    22%    0.60    16.2
+H3 long wick (40%)                         14    2    4    8    14%    0.94    13.2
+H4 small hammer                            60   17   34    9    28%    0.49    29.6
+H5 strict                                   3    2    1    0    67%    1.67     5.0
+H6 no hammer (baseline)                   113   39   64   10    35%    0.59    66.9
+H7 classic hammer                          13    4    7    2    31%    0.59     7.7
+H8 classic, any colour                     15    5    8    2    33%    0.65     9.7
+H9 classic (wick 40%)                      19    6    9    4    32%    0.84    16.0
+I1 option only, near cross                  2    0    2    0     0%   -1.00    -2.0
+I2 option+index, near cross                 1    0    1    0     0%   -1.00    -1.0
+I3 option+index, any time                   1    0    1    0     0%   -1.00    -1.0
+I4 option+index, near cross, wide stop      1    0    0    1     0%    0.15     0.2
+I5 option only, any time                    2    0    2    0     0%   -1.00    -2.0
+I6 option+index(any size), any time         1    0    1    0     0%   -1.00    -1.0
+P1 H1 + float<0.5 (old-trend = log flag)    5    3    2    0    60%    1.40     7.0
+
+INDEX HAS MOVED A LOT (>=0.20%) - later legs
+setup                                       n  win stop time   win%    avgR    sumR
+H0 v3 (current)                           118   33   71   14    28%    0.33    38.8
+H1 v3 + min size                           53   13   27   13    25%    0.41    21.9
+H2 touch EMA10 now                        111   29   68   14    26%    0.27    29.8
+H3 long wick (40%)                         50   20   24    6    40%    0.76    38.2
+H4 small hammer                           176   50  107   19    28%    0.34    59.7
+H5 strict                                  19    4    8    7    21%    0.31     5.9
+H6 no hammer (baseline)                   346  109  201   36    32%    0.47   161.6
+H7 classic hammer                          15    4   10    1    27%    0.27     4.1
+H8 classic, any colour                     25    7   17    1    28%    0.24     6.1
+H9 classic (wick 40%)                      30   10   16    4    33%    0.66    19.8
+I3 option+index, any time                   4    1    3    0    25%    0.00     0.0
+I5 option only, any time                    8    2    6    0    25%    0.00     0.0
+I6 option+index(any size), any time         5    2    3    0    40%    0.60     3.0
+P1 H1 + float<0.5 (old-trend = log flag)   46   12   27    7    26%    0.41    19.0
+
+OPTION ALREADY UP >=50% since its trend began
+setup                                       n  win stop time   win%    avgR    sumR
+H0 v3 (current)                            52   10   32   10    19%    0.10     5.1
+H1 v3 + min size                           25    3   15    7    12%   -0.21    -5.3
+H2 touch EMA10 now                         48    7   31   10    15%   -0.06    -2.9
+H3 long wick (40%)                         28    7   15    6    25%    0.43    12.1
+H4 small hammer                            80   18   50   12    22%    0.16    12.8
+H5 strict                                  11    0    6    5     0%   -0.55    -6.1
+H6 no hammer (baseline)                   143   29   97   17    20%    0.03     4.1
+H7 classic hammer                          10    1    8    1    10%   -0.29    -2.9
+H8 classic, any colour                     15    4   10    1    27%    0.27     4.1
+H9 classic (wick 40%)                      20    2   14    4    10%   -0.08    -1.7
+I3 option+index, any time                   3    0    3    0     0%   -1.00    -3.0
+I5 option only, any time                    6    0    6    0     0%   -1.00    -6.0
+I6 option+index(any size), any time         3    0    3    0     0%   -1.00    -3.0
+P1 H1 + float<0.5 (old-trend = log flag)   18    2   15    1    11%   -0.46    -8.2
+
+OPTION UP <50%
+setup                                       n  win stop time   win%    avgR    sumR
+H0 v3 (current)                           100   30   58   12    30%    0.47    46.9
+H1 v3 + min size                           35   13   16    6    37%    0.92    32.2
+H2 touch EMA10 now                         90   28   50   12    31%    0.54    48.9
+H3 long wick (40%)                         36   15   13    8    42%    1.09    39.2
+H4 small hammer                           156   49   91   16    31%    0.49    76.5
+H5 strict                                  11    6    3    2    55%    1.55    17.0
+H6 no hammer (baseline)                   316  119  168   29    38%    0.71   224.4
+H7 classic hammer                          18    7    9    2    39%    0.82    14.7
+H8 classic, any colour                     25    8   15    2    32%    0.47    11.7
+H9 classic (wick 40%)                      29   14   11    4    48%    1.29    37.4
+I1 option only, near cross                  2    0    2    0     0%   -1.00    -2.0
+I2 option+index, near cross                 1    0    1    0     0%   -1.00    -1.0
+I3 option+index, any time                   2    1    1    0    50%    1.00     2.0
+I4 option+index, near cross, wide stop      1    0    0    1     0%    0.15     0.2
+I5 option only, any time                    4    2    2    0    50%    1.00     4.0
+I6 option+index(any size), any time         3    2    1    0    67%    1.67     5.0
+P1 H1 + float<0.5 (old-trend = log flag)   33   13   14    6    39%    1.04    34.2
+
+BEST TIME OF DAY (R per trade, same 3R / 12-candle exit)
+(signal candle start time, 30-min buckets; one row per option signal; * = fewer than 10 signals, treat as noise)
+
+H0 v3 hammer
+time    |    n  win%   avgR    sumR |    n  win%   avgR |    n  win%   avgR
+        | ALL DAYS                  | research days     | live days        
+09:15   |    9   22%  -0.11    -1.0*|    5   40%   0.60 |    4    0%  -1.00
+09:45   |   12    0%   0.60     7.2 |    2    0%  -1.00 |   10    0%   0.92
+10:15   |   23   13%  -0.23    -5.2 |    3   33%   0.33 |   20   10%  -0.31
+10:45   |   12   25%   0.15     1.8 |    1    0%   0.79 |   11   27%   0.09
+11:15   |   17   47%   0.88    15.0 |    7   14%  -0.43 |   10   70%   1.80
+11:45   |   13   69%   1.77    23.0 |    4   25%   0.00 |    9   89%   2.56
+12:15   |   11    9%  -0.10    -1.1 |    0    0%   0.00 |   11    9%  -0.10
+12:45   |   11   36%   1.48    16.3 |    5   60%   1.40 |    6   17%   1.55
+13:15   |   13   38%   0.54     7.0 |    4   50%   1.00 |    9   33%   0.33
+13:45   |   19   11%  -0.58   -11.0 |    7   29%   0.14 |   12    0%  -1.00
+14:15   |   10   10%  -0.60    -6.0 |    4   25%   0.00 |    6    0%  -1.00
+14:45   |    2  100%   3.00     6.0*|    2  100%   3.00 |    0    0%   0.00
+
+H6 no-hammer baseline (EMA conditions only)
+time    |    n  win%   avgR    sumR |    n  win%   avgR |    n  win%   avgR
+        | ALL DAYS                  | research days     | live days        
+09:15   |   15   33%   0.33     5.0 |    7   29%   0.14 |    8   38%   0.50
+09:45   |   40   22%   0.50    19.9 |   12   42%   0.67 |   28   14%   0.42
+10:15   |   57   21%   0.06     3.4 |   15   13%  -0.37 |   42   24%   0.21
+10:45   |   46   22%  -0.05    -2.2 |   10    0%  -0.62 |   36   28%   0.11
+11:15   |   46   52%   1.24    56.9 |   16   44%   0.75 |   30   57%   1.50
+11:45   |   42   45%   1.02    42.9 |   10   10%   0.09 |   32   56%   1.31
+12:15   |   44   48%   1.07    47.0 |    9   11%  -0.56 |   35   57%   1.49
+12:45   |   44   20%   0.11     4.8 |    9   56%   1.22 |   35   11%  -0.18
+13:15   |   35   43%   0.76    26.7 |   12   42%   0.67 |   23   43%   0.81
+13:45   |   50   30%   0.53    26.4 |   19   42%   0.85 |   31   23%   0.33
+14:15   |   38   18%  -0.22    -8.3 |   12   33%   0.33 |   26   12%  -0.47
+14:45   |    2  100%   3.00     6.0*|    2  100%   3.00 |    0    0%   0.00
+
+ALL named formulas pooled
+time    |    n  win%   avgR    sumR |    n  win%   avgR |    n  win%   avgR
+        | ALL DAYS                  | research days     | live days        
+09:15   |   57   26%   0.05     3.0 |   28   43%   0.71 |   29   10%  -0.59
+09:45   |   97   15%   0.89    86.4 |   24   46%   0.83 |   73    5%   0.91
+10:15   |  162   15%  -0.09   -14.3 |   34   21%  -0.12 |  128   14%  -0.08
+10:45   |  112   21%  -0.01    -1.2 |   18    0%  -0.18 |   94   26%   0.02
+11:15   |  121   50%   1.07   129.9 |   51   29%   0.18 |   70   66%   1.73
+11:45   |  117   58%   1.42   165.9 |   27   15%  -0.08 |   90   71%   1.87
+12:15   |  116   36%   0.79    91.1 |   15   13%  -0.47 |  101   40%   0.97
+12:45   |  124   28%   0.71    88.4 |   35   69%   1.74 |   89   12%   0.31
+13:15   |  122   34%   0.40    48.8 |   35   46%   0.86 |   87   30%   0.21
+13:45   |  159   26%   0.21    33.8 |   62   32%   0.54 |   97   22%   0.00
+14:15   |  126   10%  -0.53   -66.6 |   40   22%  -0.10 |   86    5%  -0.73
+14:45   |   11   82%   2.27    25.0 |   11   82%   2.27 |    0    0%   0.00
+
+GRID - HAMMER FORMULAS (top 15)
+(ranked on research days, n>=8; the LIVE columns are the real test - a setup counts only if it also holds there)
+setup                                                |    n  win%   avgR |    n  win%   avgR
+g-ham classic wick50 bodymax35 uwmax20 touch6 sizeoff |    9   44%   1.12 |   25   24%   0.38
+g-ham body30 clv75 wick40 touch6 sizeoff             |   18   50%   1.00 |   46   28%   0.73
+g-ham body30 clv65 wick40 touch6 sizeoff             |   18   50%   1.00 |   46   28%   0.73
+g-ham body30 clv60 wick40 touch6 sizeoff             |   18   50%   1.00 |   46   28%   0.73
+g-ham body15 clv75 wick40 touch6 sizeoff             |   24   46%   0.96 |   65   31%   0.78
+g-ham body15 clv65 wick40 touch6 sizeoff             |   27   44%   0.89 |   74   30%   0.67
+g-ham body30 clv75 wick15 touch6 sizeon              |   16   38%   0.85 |   51   27%   0.58
+g-ham body30 clv75 wick15 touch3 sizeon              |   16   38%   0.85 |   51   27%   0.58
+g-ham body30 clv75 wick15 touch2 sizeon              |   16   38%   0.85 |   51   27%   0.58
+g-ham body15 clv75 wick15 touch6 sizeon              |   16   38%   0.85 |   52   27%   0.55
+g-ham body15 clv75 wick15 touch3 sizeon              |   16   38%   0.85 |   52   27%   0.55
+g-ham body15 clv75 wick15 touch2 sizeon              |   16   38%   0.85 |   52   27%   0.55
+g-ham body30 clv60 wick25 touch3 sizeon              |   13   38%   0.83 |   42   24%   0.47
+g-ham body30 clv60 wick25 touch2 sizeon              |   13   38%   0.83 |   40   25%   0.55
+g-ham body15 clv60 wick40 touch6 sizeoff             |   28   43%   0.82 |   76   29%   0.63
+(93 of 140 setups had enough signals; with this many formulas a few will look good by luck)
+
+GRID - INSIDE-CANDLE SETUPS (top 15)
+(ranked on research days, n>=4; the LIVE columns are the real test - a setup counts only if it also holds there)
+setup                                                |    n  win%   avgR |    n  win%   avgR
+g-ins big1.2 small0.4 freshany opt stop-big          |    5   60%   1.40 |    3    0%  -1.00
+g-ins big1.2 small0.8 freshany opt+idx stop-big      |    5   40%   1.21 |    5    0%  -1.00
+g-ins big1.2 small0.6 freshany opt+idx stop-big      |    5   40%   1.21 |    3    0%  -1.00
+g-ins big1.5 small0.8 freshany opt stop-inside       |    4   50%   1.00 |    8    0%  -1.00
+g-ins big1.5 small0.8 fresh12 opt stop-inside        |    4   50%   1.00 |    0    0%   0.00
+g-ins big1.5 small0.6 freshany opt stop-inside       |    4   50%   1.00 |    6    0%  -1.00
+g-ins big1.5 small0.6 fresh12 opt stop-inside        |    4   50%   1.00 |    0    0%   0.00
+g-ins big1.5 small0.8 freshany opt stop-big          |    5   20%   0.72 |    8    0%  -1.00
+g-ins big1.5 small0.6 freshany opt stop-big          |    5   20%   0.72 |    6    0%  -1.00
+g-ins big1.2 small0.8 freshany opt stop-big          |   10   30%   0.66 |   10    0%  -0.65
+g-ins big1.2 small0.6 freshany opt stop-big          |   10   30%   0.66 |    6    0%  -1.00
+g-ins big1.2 small0.8 fresh12 opt stop-inside        |    6   33%   0.33 |    0    0%   0.00
+g-ins big1.2 small0.6 fresh12 opt stop-inside        |    6   33%   0.33 |    0    0%   0.00
+g-ins big1.2 small0.8 fresh6 opt stop-big            |    4   25%   0.29 |    0    0%   0.00
+g-ins big1.2 small0.6 fresh6 opt stop-big            |    4   25%   0.29 |    0    0%   0.00
+(23 of 120 setups had enough signals; with this many formulas a few will look good by luck)
